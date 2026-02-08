@@ -36,7 +36,7 @@ def test_dockerfile_standards():
     # 2. UV (Fast Python)
     has_uv = "ghcr.io/astral-sh/uv" in content
     # 3. Home Assistant Add-on (Uses dynamic build arg)
-    has_ha_build = "FROM $BUILD_FROM" in content
+    has_ha_build = ("FROM $BUILD_FROM" in content) or ("FROM ${BUILD_FROM}" in content)
     
     assert has_python or has_uv or has_ha_build, \
         "Dockerfile is missing a known base image (FROM python, FROM $BUILD_FROM, etc.)"
