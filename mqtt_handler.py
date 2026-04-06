@@ -153,6 +153,8 @@ class HomeNodeMQTT:
         self.discovery_published = set()
         self.last_sent_values = {}
         self.tracked_devices = set()
+        self.discovered_device_ids = set()
+        self.allow_new_device_discovery = bool(getattr(config, "DISCOVERY_NEW_DEVICES", True))
 
         # Track one-time migrations (e.g., entity type/domain changes)
         self.migration_cleared = set()
@@ -276,10 +278,17 @@ class HomeNodeMQTT:
             # 2. Subscribe to Restart Command
             self.restart_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/restart/set"
             c.subscribe(self.restart_command_topic)
+
+            # 3. Subscribe to Discovery Toggle Command
+            self.discovery_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/discovery_new_devices/set"
+            self.discovery_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/discovery_new_devices/state"
+            c.subscribe(self.discovery_command_topic)
             
-            # 3. Publish Buttons
+            # 4. Publish host control entities
             self._publish_nuke_button()
             self._publish_restart_button()
+            self._publish_discovery_toggle_switch()
+            self._publish_discovery_toggle_state()
         else:
             print(f"[MQTT] Connection Failed! Code: {rc}")
 
@@ -296,7 +305,20 @@ class HomeNodeMQTT:
                 trigger_radio_restart()
                 return
 
-            # 3. Handle Nuke Scanning (Search & Destroy)
+            # 3. Handle Discovery Toggle Switch
+            discovery_command_topic = getattr(self, "discovery_command_topic", None)
+            if discovery_command_topic and msg.topic == discovery_command_topic:
+                requested = _parse_boolish(msg.payload.decode("utf-8") if isinstance(msg.payload, (bytes, bytearray)) else msg.payload)
+                if requested is not None:
+                    self.allow_new_device_discovery = requested
+                    state_txt = "ON" if self.allow_new_device_discovery else "OFF"
+                    discovery_state_topic = getattr(self, "discovery_state_topic", None)
+                    if discovery_state_topic:
+                        self.client.publish(discovery_state_topic, state_txt, retain=True)
+                    print(f"[MQTT] New-device discovery set to: {state_txt}")
+                return
+
+            # 4. Handle Nuke Scanning (Search & Destroy)
             if self.is_nuking:
                 if not msg.payload: return
 
@@ -369,6 +391,37 @@ class HomeNodeMQTT:
         config_topic = f"homeassistant/button/{unique_id}/config"
         self.client.publish(config_topic, json.dumps(payload), retain=True)
 
+    def _publish_discovery_toggle_switch(self):
+        """Creates the 'Allow New Device Discovery' switch."""
+        sys_id = get_system_mac().replace(":", "").lower()
+        unique_id = f"rtl_bridge_discovery_new_devices{config.ID_SUFFIX}"
+
+        payload = {
+            "name": "Allow New Device Discovery",
+            "command_topic": self.discovery_command_topic,
+            "state_topic": self.discovery_state_topic,
+            "payload_on": "ON",
+            "payload_off": "OFF",
+            "unique_id": unique_id,
+            "icon": "mdi:radar",
+            "entity_category": "config",
+            "device": {
+                "identifiers": [f"rtl433_{config.BRIDGE_NAME}_{sys_id}"],
+                "manufacturer": "rtl-haos",
+                "model": config.BRIDGE_NAME,
+                "name": f"{config.BRIDGE_NAME} ({sys_id})",
+                "sw_version": self.sw_version,
+            },
+            "availability_topic": self.TOPIC_AVAILABILITY,
+        }
+
+        config_topic = f"homeassistant/switch/{unique_id}/config"
+        self.client.publish(config_topic, json.dumps(payload), retain=True)
+
+    def _publish_discovery_toggle_state(self):
+        state_txt = "ON" if self.allow_new_device_discovery else "OFF"
+        self.client.publish(self.discovery_state_topic, state_txt, retain=True)
+
     def _handle_nuke_press(self):
         """Counts presses and triggers Nuke if threshold met."""
         now = time.time()
@@ -404,6 +457,7 @@ class HomeNodeMQTT:
             self.discovery_published.clear()
             self.last_sent_values.clear()
             self.tracked_devices.clear()
+            self.discovered_device_ids.clear()
             # Also clear discovery signatures so retained config is re-published
             # even when the metadata would otherwise look "unchanged".
             self._discovery_sig.clear()
@@ -412,6 +466,8 @@ class HomeNodeMQTT:
         self.client.publish(self.TOPIC_AVAILABILITY, "online", retain=True)
         self._publish_nuke_button()
         self._publish_restart_button()
+        self._publish_discovery_toggle_switch()
+        self._publish_discovery_toggle_state()
         print("[NUKE] Host Entities restored.")
 
     def start(self):
@@ -440,6 +496,12 @@ class HomeNodeMQTT:
         extra_payload=None,
         meta_override=None,
     ):
+        if device_model != config.BRIDGE_NAME:
+            base_device_id = str(unique_id).split("_", 1)[0]
+            is_known_device = base_device_id in self.discovered_device_ids
+            if (not self.allow_new_device_discovery) and (not is_known_device):
+                return False
+
         unique_id = f"{unique_id}{config.ID_SUFFIX}"
 
         with self.discovery_lock:
@@ -554,9 +616,25 @@ class HomeNodeMQTT:
         if value is None:
             return
 
-        self.tracked_devices.add(device_name)
-
         clean_id = clean_mac(sensor_id) 
+
+        # Host/bridge entities should always publish regardless of discovery toggle.
+        is_host_entity = str(device_model) == str(config.BRIDGE_NAME)
+        if not is_host_entity:
+            is_known_device = clean_id in self.discovered_device_ids
+            if (not self.allow_new_device_discovery) and (not is_known_device):
+                # Discovery is disabled and this is a brand-new device.
+                # Ignore it entirely so we don't track or create entities.
+                return
+
+            # Only track device list/count while discovery is enabled.
+            # When discovery is OFF, we still allow already-known devices to publish
+            # state updates, but we don't grow/change tracked_devices.
+            if self.allow_new_device_discovery:
+                self.discovered_device_ids.add(clean_id)
+                self.tracked_devices.add(device_name)
+        else:
+            self.tracked_devices.add(device_name)
         
         # Remember model for model-specific discovery/unit overrides.
         self._device_model_by_id[clean_id] = str(device_model)

@@ -139,6 +139,11 @@ class Settings(BaseSettings):
         description="If True, logs every MQTT publish. If False, only logs summaries.",
     )
 
+    discovery_new_devices: bool = Field(
+        default=True,
+        description="If False, ignore brand-new RTL devices and do not publish discovery for them.",
+    )
+
     # --- Device filtering ---
     skip_keys: list[str] = Field(default_factory=lambda: ["time", "protocol", "mod", "id"])
     device_blacklist: list[str] = Field(default_factory=lambda: ["SimpliSafe*", "EezTire*"])
@@ -262,6 +267,7 @@ RTL_THROTTLE_INTERVAL = settings.rtl_throttle_interval
 RTL_SHOW_TIMESTAMPS = settings.rtl_show_timestamps
 
 VERBOSE_TRANSMISSIONS = settings.verbose_transmissions
+DISCOVERY_NEW_DEVICES = settings.discovery_new_devices
 
 # Battery behavior
 BATTERY_OK_CLEAR_AFTER = settings.battery_ok_clear_after

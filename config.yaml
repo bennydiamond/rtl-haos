@@ -25,6 +25,7 @@ options:
   debug_raw_json: false
   rtl_show_timestamps: false
   verbose_transmissions: false  # Log every single MQTT publish
+  discovery_new_devices: true   # Set to false to start with toggle OFF
 
   # Advanced: pass through extra rtl_433 flags and/or a config file.
   # rtl_433_args acts as a GLOBAL OVERRIDE: if it includes an option that is also
@@ -86,6 +87,7 @@ schema:
   debug_raw_json: bool
   rtl_show_timestamps: bool
   verbose_transmissions: bool
+  discovery_new_devices: bool
 
   # Advanced rtl_433 passthrough
   rtl_433_args: str?
