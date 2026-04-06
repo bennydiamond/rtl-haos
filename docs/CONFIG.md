@@ -36,6 +36,7 @@ rtl_expire_after: 600         # seconds before an entity is marked unavailable
 rtl_throttle_interval: 30     # seconds to buffer/average updates (0 = realtime)
 rtl_show_timestamps: false    # if true, show last-seen timestamp in entity state
 verbose_transmissions: false  # if true, log every MQTT publish
+discovery_new_devices: true   # if false, ignore brand-new devices (no discovery, no tracking)
 
 debug_raw_json: false         # if true, print raw rtl_433 JSON lines
 

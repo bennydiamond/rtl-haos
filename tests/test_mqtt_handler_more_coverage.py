@@ -106,6 +106,7 @@ def _make_handler(monkeypatch):
     monkeypatch.setattr(config, "RTL_EXPIRE_AFTER", 60, raising=False)
     monkeypatch.setattr(config, "MAIN_SENSORS", ["main_field"], raising=False)
     monkeypatch.setattr(config, "VERBOSE_TRANSMISSIONS", False, raising=False)
+    monkeypatch.setattr(config, "DISCOVERY_NEW_DEVICES", True, raising=False)
     monkeypatch.setattr(
         config,
         "MQTT_SETTINGS",
@@ -135,12 +136,17 @@ def test_on_connect_success_subscribes_and_publishes_buttons(monkeypatch):
     # command topics set + subscribed
     assert hasattr(h, "nuke_command_topic")
     assert hasattr(h, "restart_command_topic")
+    assert hasattr(h, "discovery_command_topic")
+    assert hasattr(h, "discovery_state_topic")
     assert h.nuke_command_topic in c.subscribed
     assert h.restart_command_topic in c.subscribed
+    assert h.discovery_command_topic in c.subscribed
 
     # buttons published
     assert any(t.startswith("homeassistant/button/rtl_bridge_nuke_T/config") for (t, _, _) in c.published)
     assert any(t.startswith("homeassistant/button/rtl_bridge_restart_T/config") for (t, _, _) in c.published)
+    assert any(t.startswith("homeassistant/switch/rtl_bridge_discovery_new_devices_T/config") for (t, _, _) in c.published)
+    assert any(t == h.discovery_state_topic and p in {"ON", "OFF"} and r is True for (t, p, r) in c.published)
 
 
 def test_on_connect_failure_prints(monkeypatch, capsys):
@@ -168,6 +174,21 @@ def test_on_message_routes_nuke_and_restart(monkeypatch):
 
     assert called["nuke"] == 1
     assert called["restart"] == 1
+
+
+def test_on_message_discovery_toggle_switch(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    h._on_connect(c, None, None, rc=0)
+
+    msg_off = types.SimpleNamespace(topic=h.discovery_command_topic, payload=b"OFF")
+    h._on_message(c, None, msg_off)
+    assert h.allow_new_device_discovery is False
+    assert any(t == h.discovery_state_topic and p == "OFF" and r is True for (t, p, r) in c.published)
+
+    msg_on = types.SimpleNamespace(topic=h.discovery_command_topic, payload=b"ON")
+    h._on_message(c, None, msg_on)
+    assert h.allow_new_device_discovery is True
+    assert any(t == h.discovery_state_topic and p == "ON" and r is True for (t, p, r) in c.published)
 
 
 def test_on_message_before_connect_is_caught(monkeypatch, capsys):
@@ -449,3 +470,27 @@ def test_start_success_and_failure_and_stop(monkeypatch):
     c2.connect = boom_connect
     with pytest.raises(SystemExit):
         h2.start()
+
+
+def test_send_sensor_skips_new_device_when_discovery_toggle_off(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    h.allow_new_device_discovery = False
+
+    h.send_sensor("aa:bb", "door", "OPEN", "Dev", "NotBridge", is_rtl=False)
+
+    # No discovery or state publish for a brand-new non-host device.
+    assert c.published == []
+    assert h.tracked_devices == set()
+    assert h.discovered_device_ids == set()
+
+
+def test_send_sensor_known_device_still_publishes_when_discovery_toggle_off(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    h.allow_new_device_discovery = False
+    h.discovered_device_ids.add("deadbeef")
+
+    h.send_sensor("aa:bb", "door", "OPEN", "Dev", "NotBridge", is_rtl=False)
+
+    assert any(t.startswith("homeassistant/sensor/deadbeef_door_T/config") for (t, _, _) in c.published)
+    assert any(t == "home/rtl_devices/deadbeef/door" and p == "OPEN" and r is True for (t, p, r) in c.published)
+    assert "Dev" not in h.tracked_devices

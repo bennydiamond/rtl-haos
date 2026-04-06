@@ -50,6 +50,54 @@ See rtl_433 documentation for supported devices: https://github.com/merbanan/rtl
 
 ---
 
+## 📡 Discovery Toggle (Allow New Device Discovery)
+
+RTL-HAOS includes a **runtime switch** to control whether new RTL devices are auto-discovered and tracked. This is useful when you want a stable device list and don't want Home Assistant to grow with every stray sensor heard on the airwaves.
+
+### How It Works
+
+A **"Allow New Device Discovery"** switch appears in Home Assistant under the bridge device (Settings → Devices & Services → MQTT Integrations → RTL-HAOS Bridge).
+
+- **Toggle ON (default):** New devices are discovered.
+- **Toggle OFF:** Brand-new devices are silently ignored. Already-known devices can still emit state data. sys_device_count remains stable.
+
+### When to Use It
+
+- **Discovery ON:** Recommended during initial setup or when you're actively pairing new sensors.
+- **Discovery OFF:** Once you have your sensor list stable, toggle OFF to prevent:
+  - Accidental discovery of neighbor's devices
+  - Transient interference creating ghost entities
+  - Device count bloat from random RF noise
+  - Database clutter in Home Assistant
+
+### Behavior with Multiple Dongles
+
+When running 2–3 RTL-SDR dongles on different frequencies:
+
+- **Discovery ON:** Each dongle independently discovers devices. If the same physical sensor is heard on multiple dongles, they share the same discovered ID (no duplicates).
+- **Discovery OFF:** All new devices across all active dongles are ignored. Only already-known devices from prior discoveries can emit state updates.
+
+### Known Device Behavior
+
+Once a device is known (discovered while toggle was ON), toggling OFF does **not** forget it:
+
+- **State data:** Can still flow for known devices (RSSI, temperature, humidity, etc.).
+- **Tracking:** Known devices are not added to tracked_devices while toggle is OFF.
+- **Discovery config:** Not re-published for known devices while toggle is OFF (relies on retained topics).
+
+### Configuration
+
+You can set a startup default in configuration:
+
+```yaml
+# Home Assistant Add-on (Settings → Add-ons → RTL-HAOS → Configuration)
+discovery_new_devices: true   # default; set to false to start with toggle OFF
+
+# Docker / Standalone (.env file)
+DISCOVERY_NEW_DEVICES=true
+```
+
+---
 
 ## 📚 Documentation
 
