@@ -54,6 +54,7 @@ except ModuleNotFoundError:  # pragma: no cover
     mqtt = _DummyMQTTModule()
 # Local imports
 import config
+from device_count import DeviceCountChannel
 from utils import clean_mac, get_system_mac
 from field_meta import FIELD_META, get_field_meta
 from rtl_manager import trigger_radio_restart
@@ -155,6 +156,8 @@ class HomeNodeMQTT:
         self.tracked_devices = set()
         self.discovered_device_ids = set()
         self.allow_new_device_discovery = bool(getattr(config, "DISCOVERY_NEW_DEVICES", True))
+        # Channel that delivers the latest device count to the monitor thread.
+        self.device_count_channel = DeviceCountChannel(self)
 
         # Track one-time migrations (e.g., entity type/domain changes)
         self.migration_cleared = set()
@@ -462,6 +465,9 @@ class HomeNodeMQTT:
             # even when the metadata would otherwise look "unchanged".
             self._discovery_sig.clear()
 
+        # Notify device_count_loop that count is now 0.
+        self.device_count_channel.push(0)
+
         print("[NUKE] Scan Complete. All identified entities removed.")
         self.client.publish(self.TOPIC_AVAILABILITY, "online", retain=True)
         self._publish_nuke_button()
@@ -633,8 +639,10 @@ class HomeNodeMQTT:
             if self.allow_new_device_discovery:
                 self.discovered_device_ids.add(clean_id)
                 self.tracked_devices.add(device_name)
+                self.device_count_channel.push(len(self.tracked_devices))
         else:
             self.tracked_devices.add(device_name)
+            self.device_count_channel.push(len(self.tracked_devices))
         
         # Remember model for model-specific discovery/unit overrides.
         self._device_model_by_id[clean_id] = str(device_model)
