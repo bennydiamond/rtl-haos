@@ -391,6 +391,44 @@ def test_send_sensor_value_none_and_verbose_and_no_resend(monkeypatch, capsys):
     assert after_state == before_state
 
 
+def test_send_sensor_pushes_device_count_only_for_new_device(monkeypatch):
+    h, _c = _make_handler(monkeypatch)
+
+    monkeypatch.setattr(
+        mqtt_handler,
+        "FIELD_META",
+        {"door": (None, "none", "mdi:door", "Door")},
+        raising=False,
+    )
+
+    calls = []
+    h.device_count_channel.push = lambda count: calls.append(count)
+
+    h.send_sensor("aa:bb", "door", "OPEN", "Dev", "NotBridge", is_rtl=False)
+    h.send_sensor("aa:bb", "door", "CLOSED", "Dev", "NotBridge", is_rtl=False)
+
+    assert calls == [1]
+
+
+def test_send_sensor_pushes_updated_count_for_each_new_device(monkeypatch):
+    h, _c = _make_handler(monkeypatch)
+
+    monkeypatch.setattr(
+        mqtt_handler,
+        "FIELD_META",
+        {"door": (None, "none", "mdi:door", "Door")},
+        raising=False,
+    )
+
+    calls = []
+    h.device_count_channel.push = lambda count: calls.append(count)
+
+    h.send_sensor("aa:bb", "door", "OPEN", "Dev1", "NotBridge", is_rtl=False)
+    h.send_sensor("cc:dd", "door", "OPEN", "Dev2", "NotBridge", is_rtl=False)
+
+    assert calls == [1, 2]
+
+
 def test_battery_ok_publishes_binary_sensor_and_inverts_state(monkeypatch):
     h, c = _make_handler(monkeypatch)
 

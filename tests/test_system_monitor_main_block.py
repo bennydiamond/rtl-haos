@@ -18,6 +18,14 @@ def test_system_monitor_main_block_starts_and_stops(monkeypatch):
             DummyMQTT.last_instance = self
             self.started = False
             self.stopped = False
+            self.device_count_channel = type(
+                "_Ch",
+                (),
+                {
+                    "loop": lambda self, *a, **k: None,
+                    "start_thread": lambda self, *a, **k: None,
+                },
+            )()
 
         def start(self):
             self.started = True

@@ -12,8 +12,9 @@ def test_format_list_for_ha_truncates_and_sorts():
     assert len(out2) <= 250
 
 
-def test_system_stats_loop_one_iteration_sends_device_count(mocker):
+def test_system_stats_loop_one_iteration_sends_rtl_433_version(mocker):
     mocker.patch.object(system_monitor, "PSUTIL_AVAILABLE", False)
+    mocker.patch.object(system_monitor, "get_rtl_433_version_cached", return_value="rtl_433 version 24.01")
 
     mqtt_handler = mocker.Mock()
     mqtt_handler.tracked_devices = {"A", "B", "C"}
@@ -26,8 +27,8 @@ def test_system_stats_loop_one_iteration_sends_device_count(mocker):
 
     mqtt_handler.send_sensor.assert_any_call(
         "dev123",
-        "sys_device_count",
-        3,
+        "sys_rtl_433_version",
+        "rtl_433 version 24.01",
         "Bridge (dev123)",
         "Bridge",
         is_rtl=True,

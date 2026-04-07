@@ -58,6 +58,14 @@ def test_main_sets_slot_for_missing_ids_in_manual_mode(mocker):
     class DummyMQTT:
         def __init__(self, version=None):
             self.version = version
+            self.device_count_channel = type(
+                "_Ch",
+                (),
+                {
+                    "loop": lambda self, *a, **k: None,
+                    "start_thread": lambda self, *a, **k: None,
+                },
+            )()
         def start(self): return
         def stop(self): return
 
