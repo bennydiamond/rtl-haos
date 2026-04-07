@@ -9,6 +9,14 @@ class DummyMQTT:
     def __init__(self, *args, **kwargs):
         self.started = False
         self.stopped = False
+        self.device_count_channel = type(
+            "_Ch",
+            (),
+            {
+                "loop": lambda self, *a, **k: None,
+                "start_thread": lambda self, *a, **k: None,
+            },
+        )()
 
     def start(self):
         self.started = True

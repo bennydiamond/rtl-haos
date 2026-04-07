@@ -63,6 +63,7 @@ def test_format_list_for_ha_and_loop_one_iteration(monkeypatch):
 
     dm = DummyMQTT()
     monkeypatch.setattr(sm, "PSUTIL_AVAILABLE", False)
+    monkeypatch.setattr(sm, "get_rtl_433_version_cached", lambda: "rtl_433 version test")
 
     def stop(_sec):
         raise StopIteration
@@ -74,4 +75,4 @@ def test_format_list_for_ha_and_loop_one_iteration(monkeypatch):
     except StopIteration:
         pass
 
-    assert any(field == "sys_device_count" and value == 2 for (_d, field, value, *_rest) in dm.calls)
+    assert any(field == "sys_rtl_433_version" and value == "rtl_433 version test" for (_d, field, value, *_rest) in dm.calls)

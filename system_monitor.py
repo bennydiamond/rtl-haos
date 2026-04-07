@@ -108,11 +108,10 @@ def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME):
         # --- 1. BRIDGE METRICS (Always Run) ---
         try:
             # A. Tracked Devices
-            devices = mqtt_handler.tracked_devices
-            count = len(devices)
-            dev_list_str = format_list_for_ha(devices) if count > 0 else "Scanning..."
+            # devices = mqtt_handler.tracked_devices
+            # count = len(devices)
+            # dev_list_str = format_list_for_ha(devices) if count > 0 else "Scanning..."
 
-            mqtt_handler.send_sensor(DEVICE_ID, "sys_device_count", count, device_name, MODEL_NAME, is_rtl=True)
             mqtt_handler.send_sensor(DEVICE_ID, "sys_rtl_433_version", rtl_433_version, device_name, MODEL_NAME, is_rtl=True)
             # mqtt_handler.send_sensor(DEVICE_ID, "sys_device_list", dev_list_str, device_name, MODEL_NAME, is_rtl=True)
 
@@ -155,6 +154,12 @@ if __name__ == "__main__":
 
     mqtt_handler = HomeNodeMQTT()
     mqtt_handler.start()
+
+    mqtt_handler.device_count_channel.start_thread(
+        BASE_DEVICE_ID,
+        BASE_MODEL_NAME,
+        thread_factory=threading.Thread,
+    )
 
     threading.Thread(
         target=system_stats_loop,

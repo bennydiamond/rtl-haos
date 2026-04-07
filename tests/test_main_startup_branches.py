@@ -9,6 +9,14 @@ def test_main_manual_config_duplicate_ids_and_unconfigured_hardware(mocker, caps
     class DummyMQTT:
         def __init__(self, version=None):
             self.version = version
+            self.device_count_channel = type(
+                "_Ch",
+                (),
+                {
+                    "loop": lambda self, *a, **k: None,
+                    "start_thread": lambda self, *a, **k: None,
+                },
+            )()
         def start(self): return
         def stop(self): return
 
@@ -92,7 +100,16 @@ def test_main_auto_mode_warns_when_ignoring_extra_radios(mocker, capsys):
     mocker.patch.object(main, "check_dependencies", lambda: None)
 
     class DummyMQTT:
-        def __init__(self, version=None): self.version = version
+        def __init__(self, version=None):
+            self.version = version
+            self.device_count_channel = type(
+                "_Ch",
+                (),
+                {
+                    "loop": lambda self, *a, **k: None,
+                    "start_thread": lambda self, *a, **k: None,
+                },
+            )()
         def start(self): return
         def stop(self): return
 
@@ -155,7 +172,16 @@ def test_main_deduplicates_hardware_serials(mocker, capsys):
     mocker.patch.object(main, "get_system_mac", return_value="aa:bb:cc:dd:ee:ff")
     
     class DummyMQTT:
-        def __init__(self, version=None): self.version = version
+        def __init__(self, version=None):
+            self.version = version
+            self.device_count_channel = type(
+                "_Ch",
+                (),
+                {
+                    "loop": lambda self, *a, **k: None,
+                    "start_thread": lambda self, *a, **k: None,
+                },
+            )()
         def start(self): return
         def stop(self): return
 

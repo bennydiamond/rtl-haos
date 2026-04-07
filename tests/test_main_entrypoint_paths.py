@@ -37,6 +37,14 @@ class DummyMQTT:
         self.version = version
         self.started = False
         self.stopped = False
+        self.device_count_channel = type(
+            "_Ch",
+            (),
+            {
+                "loop": lambda self, *a, **k: None,
+                "start_thread": lambda self, *a, **k: None,
+            },
+        )()
         DummyMQTT.instances.append(self)
 
     def start(self):

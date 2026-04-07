@@ -82,6 +82,14 @@ def test_main_smoke_run_exits_cleanly(mocker):
     class DummyMQTT:
         def __init__(self, version=None):
             self.version = version
+            self.device_count_channel = type(
+                "_Ch",
+                (),
+                {
+                    "loop": lambda self, *a, **k: None,
+                    "start_thread": lambda self, *a, **k: None,
+                },
+            )()
         def start(self): pass
         def stop(self): pass
 

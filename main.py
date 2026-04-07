@@ -600,6 +600,11 @@ def main():
                 daemon=True,
             ).start()
 
+    mqtt_handler.device_count_channel.start_thread(
+        sys_id,
+        sys_model,
+        thread_factory=threading.Thread,
+    )
     threading.Thread(target=system_stats_loop, args=(mqtt_handler, sys_id, sys_model), daemon=True).start()
 
     try:
