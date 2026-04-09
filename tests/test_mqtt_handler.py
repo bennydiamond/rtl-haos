@@ -73,14 +73,14 @@ def test_mqtt_discovery_payload(mocker, mock_config):
         topic = args[0]
         payload = args[1]
         
-        if "config" in topic and "device123_temperature" in topic:
+        if "config" in topic and "rtl433_ModelZ_device123_temperature" in topic:
             found_discovery = True
             data = json.loads(payload)
             assert data["device"]["name"] == "My Weather"
             assert data["device_class"] == "temperature"
             assert data["unit_of_measurement"] == "°F"
             
-        if topic == "home/rtl_devices/device123/temperature":
+        if topic == "home/rtl_devices/rtl433_ModelZ_device123/temperature":
             found_state = True
             assert payload == "75.0"
 

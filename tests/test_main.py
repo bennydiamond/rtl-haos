@@ -80,8 +80,9 @@ def test_main_smoke_run_exits_cleanly(mocker):
     mocker.patch.object(main, "show_logo", lambda *_: None)
 
     class DummyMQTT:
-        def __init__(self, version=None):
+        def __init__(self, version=None, *args, **kwargs):
             self.version = version
+            self.allow_new_device_discovery = True
             self.device_count_channel = type(
                 "_Ch",
                 (),
@@ -92,9 +93,22 @@ def test_main_smoke_run_exits_cleanly(mocker):
             )()
         def start(self): pass
         def stop(self): pass
+        def _get_discovery_enabled(self): return self.allow_new_device_discovery
+        def cleanup_device_discovered_topics(self, clean_id): pass
+
+    class DummyKnownStore:
+        def __init__(self, path=None):
+            self.path = path
+        def load_ids(self): return set()
+        def save_ids(self, ids): pass
+
+    class DummyKnownDeviceManager:
+        def __init__(self, known_device_store=None, get_discovery_enabled_callback=None, mqtt_cleanup_callback=None):
+            pass
+        def clear_all_devices(self): pass
 
     class DummyProcessor:
-        def __init__(self, mqtt): self.mqtt = mqtt
+        def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt
         def start_throttle_loop(self): return
 
     class DummyThread:
@@ -106,6 +120,8 @@ def test_main_smoke_run_exits_cleanly(mocker):
     # ✅ Patch what main.py actually calls (because of "from X import Y")
     mocker.patch.object(main, "HomeNodeMQTT", DummyMQTT)
     mocker.patch.object(main, "DataProcessor", DummyProcessor)
+    mocker.patch.object(main, "KnownDeviceStore", DummyKnownStore)
+    mocker.patch.object(main, "KnownDeviceManager", DummyKnownDeviceManager)
     mocker.patch.object(main, "discover_rtl_devices", return_value=[{"name": "RTL0", "id": "000", "index": 0}])
     mocker.patch.object(main, "rtl_loop", lambda *a, **k: None)
     mocker.patch.object(main, "system_stats_loop", lambda *a, **k: None)
@@ -130,4 +146,3 @@ def test_main_smoke_run_exits_cleanly(mocker):
     mocker.patch.object(main.threading, "Thread", DummyThread)
 
     main.main()
-

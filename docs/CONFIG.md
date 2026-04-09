@@ -37,6 +37,7 @@ rtl_throttle_interval: 30     # seconds to buffer/average updates (0 = realtime)
 rtl_show_timestamps: false    # if true, show last-seen timestamp in entity state
 verbose_transmissions: false  # if true, log every MQTT publish
 discovery_new_devices: true   # if false, ignore brand-new devices (no discovery, no tracking)
+known_devices_path: /data/known_devices.json  # known device IDs persisted across restarts
 
 debug_raw_json: false         # if true, print raw rtl_433 JSON lines
 
@@ -46,6 +47,24 @@ gas_unit: ft3                 # ft3 (default) or ccf
 # Battery alert behavior (battery_ok -> Battery Low)
 battery_ok_clear_after: 300   # seconds battery_ok must be OK before clearing a low alert (0 disables)
 ```
+
+### Known device persistence path
+
+`known_devices_path` controls where RTL-HAOS stores the known-device ID file used to survive restarts.
+
+- Default: `/data/known_devices.json`
+- File format: JSON object with a top-level `devices` map, keyed by device ID
+- If discovery is OFF, devices already listed in this file are still treated as known
+
+Home Assistant add-on example (store under `/share`, which is host-backed):
+
+```yaml
+known_devices_path: /share/rtl-haos/known_devices.json
+```
+
+Notes:
+- `/data` is persisted by Home Assistant for add-ons.
+- `/share` is also persistent and easier to inspect from the host/network share.
 
 ### Auto mode vs manual rtl_config
 
@@ -173,9 +192,31 @@ Common env vars:
 - `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, `MQTT_PASS`
 - `RTL_CONFIG` (JSON list of radio dicts)
 - `RTL_433_ARGS`, `RTL_433_BIN`, `RTL_433_CONFIG_PATH`, `RTL_433_CONFIG_INLINE`
+- `KNOWN_DEVICES_PATH` (path to persisted known device IDs)
 
 Example `RTL_CONFIG` using rtl_tcp:
 
 ```bash
 RTL_CONFIG='[{"name":"Remote SDR","tcp_host":"192.168.1.10","tcp_port":1234,"freq":"433.92M","rate":"250k"}]'
 ```
+
+### Persist known devices on host filesystem (Docker bind mount)
+
+Set a container path and bind it to a host path.
+
+Example `.env`:
+
+```bash
+KNOWN_DEVICES_PATH=/state/known_devices.json
+```
+
+Example `docker-compose.yml` service snippet:
+
+```yaml
+services:
+  rtl-haos:
+    volumes:
+      - ./state:/state
+```
+
+This stores `known_devices.json` on the host at `./state/known_devices.json`.

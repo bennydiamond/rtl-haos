@@ -144,6 +144,11 @@ class Settings(BaseSettings):
         description="If False, ignore brand-new RTL devices and do not publish discovery for them.",
     )
 
+    known_devices_path: str = Field(
+        default="/data/known_devices.json",
+        description="Path used to persist known device IDs across restarts.",
+    )
+
     # --- Device filtering ---
     skip_keys: list[str] = Field(default_factory=lambda: ["time", "protocol", "mod", "id"])
     device_blacklist: list[str] = Field(default_factory=lambda: ["SimpliSafe*", "EezTire*"])
@@ -268,6 +273,7 @@ RTL_SHOW_TIMESTAMPS = settings.rtl_show_timestamps
 
 VERBOSE_TRANSMISSIONS = settings.verbose_transmissions
 DISCOVERY_NEW_DEVICES = settings.discovery_new_devices
+KNOWN_DEVICES_PATH = settings.known_devices_path
 
 # Battery behavior
 BATTERY_OK_CLEAR_AFTER = settings.battery_ok_clear_after

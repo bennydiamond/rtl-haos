@@ -5,7 +5,7 @@ DESCRIPTION:
   Handles data buffering, throttling, and averaging to reduce MQTT traffic.
   - dispatch_reading(): Adds data to buffer or sends immediately if throttling is 0.
   - start_throttle_loop(): Runs in a background thread to flush averages.
-  - UPDATED: Now accepts and logs 'radio_freq'.
+  - UPDATED: Now uses KnownDeviceManager for all known-device orchestration.
 """
 import threading
 import time
@@ -20,8 +20,9 @@ NON_AVERAGED_NUMERIC_FIELDS = {
 }
 
 class DataProcessor:
-    def __init__(self, mqtt_handler):
+    def __init__(self, mqtt_handler, known_device_manager=None):
         self.mqtt_handler = mqtt_handler
+        self.known_device_manager = known_device_manager
         self.buffer = {}
         self.lock = threading.Lock()
 
@@ -31,6 +32,8 @@ class DataProcessor:
         Ingests a sensor reading.
         If throttling is disabled (interval <= 0), sends immediately.
         Otherwise, stores it in the buffer.
+        
+        Discovery gating is handled by known_device_manager.should_process_frame().
         """
         interval = getattr(config, "RTL_THROTTLE_INTERVAL", 0)
 
@@ -38,9 +41,30 @@ class DataProcessor:
         if value is None:
             return
         
+        compound_id = f"rtl433_{model}_{clean_id}"
+        
+        if self.known_device_manager:
+            if not self.known_device_manager.should_process_frame(compound_id):
+                return
+        
         # 1. Immediate Dispatch (No Throttling)
         if interval <= 0:
-            self.mqtt_handler.send_sensor(clean_id, field, value, dev_name, model, is_rtl=True)
+            status = self.mqtt_handler.send_sensor(
+                clean_id,
+                field,
+                value,
+                dev_name,
+                model,
+                is_rtl=True,
+            )
+            
+            # Save to JSON whenever new topics are created, even if the device was already known.
+            if self.known_device_manager and status.get("topics"):
+                self.known_device_manager.add_or_update_device(
+                    compound_id=compound_id,
+                    device_name=dev_name,
+                    new_topics=status["topics"],
+                )
             return
 
         # 2. Buffered Dispatch
@@ -118,7 +142,28 @@ class DataProcessor:
                     except:
                         final_val = values[-1]
 
-                    self.mqtt_handler.send_sensor(clean_id, field, final_val, dev_name, model, is_rtl=True)
+                    compound_id = f"rtl433_{model}_{clean_id}"
+                    
+                    if self.known_device_manager:
+                        if not self.known_device_manager.should_process_frame(compound_id):
+                            continue
+                    
+                    status = self.mqtt_handler.send_sensor(
+                        clean_id,
+                        field,
+                        final_val,
+                        dev_name,
+                        model,
+                        is_rtl=True,
+                    )
+                    
+                    if self.known_device_manager and status.get("topics"):
+                        self.known_device_manager.add_or_update_device(
+                            compound_id=compound_id,
+                            device_name=dev_name,
+                            new_topics=status["topics"],
+                        )
+                    
                     count_sent += 1
                     
                     # --- FIX 3: Group by Radio + Frequency for the log ---

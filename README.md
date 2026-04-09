@@ -82,8 +82,9 @@ When running 2–3 RTL-SDR dongles on different frequencies:
 Once a device is known (discovered while toggle was ON), toggling OFF does **not** forget it:
 
 - **State data:** Can still flow for known devices (RSSI, temperature, humidity, etc.).
-- **Tracking:** Known devices are not added to tracked_devices while toggle is OFF.
+- **Tracking:** Known devices are marked active again when a new RF frame is received.
 - **Discovery config:** Not re-published for known devices while toggle is OFF (relies on retained topics).
+- **Persistence:** Known device IDs are stored on disk and loaded at startup.
 
 ### Configuration
 
@@ -92,9 +93,20 @@ You can set a startup default in configuration:
 ```yaml
 # Home Assistant Add-on (Settings → Add-ons → RTL-HAOS → Configuration)
 discovery_new_devices: true   # default; set to false to start with toggle OFF
+known_devices_path: /data/known_devices.json
 
 # Docker / Standalone (.env file)
 DISCOVERY_NEW_DEVICES=true
+KNOWN_DEVICES_PATH=/state/known_devices.json
+```
+
+For Docker, bind mount the directory used by `KNOWN_DEVICES_PATH` so the file lives on host storage:
+
+```yaml
+services:
+  rtl-haos:
+    volumes:
+      - ./state:/state
 ```
 
 ---
@@ -565,6 +577,21 @@ uv run python main.py
 
 RTL-HAOS exposes two maintenance buttons on the **Bridge** device to help with stale entities or a stuck radio process.
 
+### 🗑️ Remove a Single Device
+
+If you want to remove a single stale, unwanted, or accidentally discovered device without affecting the rest of your setup:
+
+1. Navigate to **Settings** → **Devices**
+2. Open your Bridge device (named like `rtl-haos-bridge (xxxxxxxxxxxx)`)
+3. Find the **"Known Devices"** dropdown (`select` entity) and choose the specific device you want to delete.
+4. Press the **"Remove Selected Device"** button.
+
+What happens?
+- RTL-HAOS instantly removes the device from its internal memory.
+- It deletes the device's entry from the `known_devices.json` persistence file so it won't be reloaded on restart.
+- It specifically targets and clears *only* the retained MQTT discovery and state topics associated with that exact device.
+- Home Assistant cleanly removes the device and its entities from your dashboard.
+
 ### 🧹 Delete Entities (Press 5x)
 
 If you change batteries or remove devices, old entities may linger in Home Assistant. This cleanup tool clears the **MQTT Discovery configs** RTL-HAOS created.
@@ -577,10 +604,11 @@ If you change batteries or remove devices, old entities may linger in Home Assis
 What happens?
 - RTL-HAOS scans retained Home Assistant discovery topics (`homeassistant/+/+/config`) for devices whose `manufacturer` contains `"rtl-haos"`.
 - It publishes empty retained payloads to remove those discovery configs.
+- It clears its internal memory of all discovered devices, and resets the device count.
 - Home Assistant removes the devices/entities almost immediately.
 - Valid devices reappear automatically the next time they transmit data (discovery is republished on the next reading).
 
-⚠️ Note: This scan matches on `manufacturer: rtl-haos`, so if you run **multiple RTL-HAOS bridges on the same broker**, it can remove discovery entries for *all* of them.
+⚠️ Note: This scan matches on `manufacturer: rtl-haos`, so if you run **multiple RTL-HAOS bridges on the same broker**, it can remove discovery entries for *all* of them. Also, unlike the Single Device removal, this **does not** wipe your `known_devices.json` file.
 
 ### 🔁 Restart Radios
 

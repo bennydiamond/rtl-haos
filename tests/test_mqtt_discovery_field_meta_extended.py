@@ -44,6 +44,7 @@ def test_publish_discovery_uses_field_meta_for_new_fields(monkeypatch, sensor_na
         unique_id=f"dev_{sensor_name}",
         device_name="My Device",
         device_model="SomeModel",
+        compound_id="rtl433_SomeModel_dev",
     )
 
     topic, payload = _last_published_json(c, f"homeassistant/sensor/dev_{sensor_name}_T/config")
@@ -65,6 +66,7 @@ def test_battery_pct_does_not_force_state_class(monkeypatch):
         unique_id="dev_battery_pct",
         device_name="My Device",
         device_model="SomeModel",
+        compound_id="rtl433_SomeModel_dev",
     )
 
     _topic, payload = _last_published_json(c, "homeassistant/sensor/dev_battery_pct_T/config")

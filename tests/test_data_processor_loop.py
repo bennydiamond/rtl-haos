@@ -23,6 +23,7 @@ def test_throttle_loop_flushes_numeric_and_string(mocker):
         p.start_throttle_loop()
 
     # mean(10,20,30)=20.0 -> becomes int(20) per code
+    # New architecture: no is_known_device parameter (gating happens in processor/manager)
     mqtt.send_sensor.assert_any_call("dev1", "temp", 20, "Dev", "Model", is_rtl=True)
     mqtt.send_sensor.assert_any_call("dev1", "state", "Closed", "Dev", "Model", is_rtl=True)
 

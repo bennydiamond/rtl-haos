@@ -154,10 +154,12 @@ class HomeNodeMQTT:
         self.discovery_published = set()
         self.last_sent_values = {}
         self.tracked_devices = set()
-        self.discovered_device_ids = set()
         self.allow_new_device_discovery = bool(getattr(config, "DISCOVERY_NEW_DEVICES", True))
         # Channel that delivers the latest device count to the monitor thread.
         self.device_count_channel = DeviceCountChannel(self)
+
+        # Callback triggered when a full Nuke completes (e.g. to wipe known devices)
+        self.on_nuke_callback = None
 
         # Track one-time migrations (e.g., entity type/domain changes)
         self.migration_cleared = set()
@@ -167,18 +169,22 @@ class HomeNodeMQTT:
         self._battery_state: dict[str, dict] = {}
         
         self.discovery_lock = threading.Lock()
+        # Protects allow_new_device_discovery + discovered_device_ids
+        # so the toggle write (paho thread) and check-then-add in send_sensor
+        # (rtl_433 reader threads) are atomic with respect to each other.
+        self._allow_discovery_lock = threading.Lock()
 
         # --- Utility meter inference cache (per-device) ---
         # Used to correctly classify generic fields like 'consumption_data' for ERT-SCM endpoints.
-        self._commodity_by_device = {}  # clean_id -> 'electric'|'gas'|'water'
+        self._commodity_by_device = {}  # compound_id -> 'electric'|'gas'|'water'
 
         # Remember the last device model we saw per device.
         # Used for model-specific unit overrides (e.g., Neptune-R900 reports gallons).
-        self._device_model_by_id: dict[str, str] = {}
+        self._device_model_by_id: dict[str, str] = {} # compound_id -> model
 
         # Remember last raw utility readings so we can re-publish state/config
         # once we learn commodity (or unit preferences) from later fields.
-        # Key: (clean_id, field) -> raw_value
+        # Key: (compound_id, field) -> raw_value
         self._utility_last_raw = {}
 
         # Cache the last discovery signature we published per entity so we can
@@ -194,9 +200,9 @@ class HomeNodeMQTT:
         self.NUKE_TIMEOUT = 5.0       
         self.is_nuking = False        
 
-    def _utility_meta_override(self, clean_id, field):
+    def _utility_meta_override(self, compound_id, field):
         """Return (unit, device_class, icon, friendly_name) for utility meter readings, or None."""
-        commodity = self._commodity_by_device.get(clean_id)
+        commodity = self._commodity_by_device.get(compound_id)
         if not commodity:
             return None
 
@@ -209,19 +215,19 @@ class HomeNodeMQTT:
             return ("ft³", "gas", "mdi:fire", "Gas Usage")
         if commodity == "water":
             # Neptune R900 (protocol 228) typically reports gallons (often in tenths, normalized upstream).
-            model = str(self._device_model_by_id.get(clean_id, "") or "").strip()
+            model = str(self._device_model_by_id.get(compound_id, "") or "").strip()
             if field == "meter_reading" and model.lower().startswith("neptune-r900"):
                 return ("gal", "water", "mdi:water-pump", "Water Usage")
             return ("ft³", "water", "mdi:water-pump", "Water Reading")
         return None
-    def _utility_normalize_value(self, clean_id: str, field: str, value, device_model: str):
+    def _utility_normalize_value(self, compound_id: str, field: str, value, device_model: str):
         """Normalize utility readings *after* commodity is known.
 
         Goals:
           - Electric meters: ERT-SCM/SCMplus typically report hundredths of kWh.
           - Gas meters: ERT-SCM typically reports CCF (hundred cubic feet). Optionally publish ft³.
         """
-        commodity = self._commodity_by_device.get(clean_id)
+        commodity = self._commodity_by_device.get(compound_id)
         if not commodity:
             return value
 
@@ -234,7 +240,7 @@ class HomeNodeMQTT:
         except (TypeError, ValueError):
             return value
 
-        model = str(device_model or self._device_model_by_id.get(clean_id, "") or "").strip().lower()
+        model = str(device_model or self._device_model_by_id.get(compound_id, "") or "").strip().lower()
 
         if commodity == "electric":
             # Most ERT-SCM/SCMplus electric meters report hundredths of kWh.
@@ -255,7 +261,7 @@ class HomeNodeMQTT:
         return v
 
 
-    def _refresh_utility_entities_for_device(self, clean_id: str, device_name: str, device_model: str) -> None:
+    def _refresh_utility_entities_for_device(self, compound_id: str, clean_id: str, device_name: str, device_model: str) -> None:
         """Re-publish discovery + state for cached utility readings for this device.
 
         This is used when we learn commodity metadata after the reading was already
@@ -263,7 +269,7 @@ class HomeNodeMQTT:
         keep the first-discovered device_class/unit.
         """
         for (cid, field), raw_value in list(self._utility_last_raw.items()):
-            if cid != clean_id:
+            if cid != compound_id:
                 continue
             # Use is_rtl=False so we only publish if it actually changes.
             self.send_sensor(clean_id, field, raw_value, device_name, device_model, is_rtl=False)
@@ -313,11 +319,13 @@ class HomeNodeMQTT:
             if discovery_command_topic and msg.topic == discovery_command_topic:
                 requested = _parse_boolish(msg.payload.decode("utf-8") if isinstance(msg.payload, (bytes, bytearray)) else msg.payload)
                 if requested is not None:
-                    self.allow_new_device_discovery = requested
-                    state_txt = "ON" if self.allow_new_device_discovery else "OFF"
-                    discovery_state_topic = getattr(self, "discovery_state_topic", None)
-                    if discovery_state_topic:
-                        self.client.publish(discovery_state_topic, state_txt, retain=True)
+                    with self._allow_discovery_lock:
+                        self.allow_new_device_discovery = requested
+                    state_txt = "ON" if requested else "OFF"
+
+                    # Publish state immediately so HA UI reflects the change now.
+                    self._publish_discovery_toggle_state()
+
                     print(f"[MQTT] New-device discovery set to: {state_txt}")
                 return
 
@@ -425,6 +433,56 @@ class HomeNodeMQTT:
         state_txt = "ON" if self.allow_new_device_discovery else "OFF"
         self.client.publish(self.discovery_state_topic, state_txt, retain=True)
 
+    def _get_discovery_enabled(self) -> bool:
+        """Return current discovery toggle state.
+        
+        Called by KnownDeviceManager to query discovery setting.
+        Thread-safe snapshots via allow_discovery_lock.
+        """
+        with self._allow_discovery_lock:
+            return self.allow_new_device_discovery
+
+    def cleanup_device_discovered_topics(self, topics_to_delete: list[str], device_name_to_remove: str) -> None:
+        """Clear all retained MQTT topics for a device and update internal state.
+        
+        Called by KnownDeviceManager when device is removed.
+        """
+        if not topics_to_delete:
+            return
+
+        unique_ids_to_clear = set()
+
+        for topic in topics_to_delete:
+            topic = str(topic or "").strip()
+            if not topic:
+                continue
+
+            # Publish empty retained message to delete the topic from the broker
+            self.client.publish(topic, "", retain=True)
+
+            # Extract unique_id from config topics to clear internal caches
+            if topic.startswith("homeassistant/") and topic.endswith("/config"):
+                parts = topic.split('/')
+                if len(parts) >= 3:
+                    unique_ids_to_clear.add(parts[-2])
+
+        try:
+            with self.discovery_lock:
+                for uid in unique_ids_to_clear:
+                    self.discovery_published.discard(uid)
+                    self._discovery_sig.pop(uid, None)
+                    self.last_sent_values.pop(uid, None)
+
+            if device_name_to_remove:
+                with self._allow_discovery_lock:
+                    if device_name_to_remove in self.tracked_devices:
+                        self.tracked_devices.remove(device_name_to_remove)
+                        self.device_count_channel.push(len(self.tracked_devices))
+
+            print(f"[MQTT] Cleared {len(topics_to_delete)} topics for device '{device_name_to_remove or 'Unknown'}'.")
+        except Exception as e:
+            print(f"[MQTT] Error clearing device topics: {e}")
+
     def _handle_nuke_press(self):
         """Counts presses and triggers Nuke if threshold met."""
         now = time.time()
@@ -460,13 +518,18 @@ class HomeNodeMQTT:
             self.discovery_published.clear()
             self.last_sent_values.clear()
             self.tracked_devices.clear()
-            self.discovered_device_ids.clear()
             # Also clear discovery signatures so retained config is re-published
             # even when the metadata would otherwise look "unchanged".
             self._discovery_sig.clear()
 
         # Notify device_count_loop that count is now 0.
         self.device_count_channel.push(0)
+
+        if callable(self.on_nuke_callback):
+            try:
+                self.on_nuke_callback()
+            except Exception as e:
+                print(f"[MQTT] Error in nuke callback: {e}")
 
         print("[NUKE] Scan Complete. All identified entities removed.")
         self.client.publish(self.TOPIC_AVAILABILITY, "online", retain=True)
@@ -497,17 +560,12 @@ class HomeNodeMQTT:
         unique_id,
         device_name,
         device_model,
+        compound_id,
         friendly_name_override=None,
         domain="sensor",
         extra_payload=None,
         meta_override=None,
     ):
-        if device_model != config.BRIDGE_NAME:
-            base_device_id = str(unique_id).split("_", 1)[0]
-            is_known_device = base_device_id in self.discovered_device_ids
-            if (not self.allow_new_device_discovery) and (not is_known_device):
-                return False
-
         unique_id = f"{unique_id}{config.ID_SUFFIX}"
 
         with self.discovery_lock:
@@ -545,7 +603,7 @@ class HomeNodeMQTT:
                 entity_cat = None
 
             device_registry = {
-                "identifiers": [f"rtl433_{device_model}_{unique_id.split('_')[0]}"],
+                "identifiers": [compound_id],
                 "manufacturer": "rtl-haos",
                 "model": device_model,
                 "name": device_name 
@@ -610,45 +668,62 @@ class HomeNodeMQTT:
             if prev_sig == sig:
                 # Already published with identical metadata.
                 self.discovery_published.add(unique_id)
-                return False
+                return False, []
 
             config_topic = f"homeassistant/{domain}/{unique_id}/config"
             self.client.publish(config_topic, json.dumps(payload), retain=True)
             self.discovery_published.add(unique_id)
             self._discovery_sig[unique_id] = sig
-            return True
+            return True, [config_topic, state_topic]
 
-    def send_sensor(self, sensor_id, field, value, device_name, device_model, is_rtl=True, friendly_name=None):
+    def send_sensor(
+        self,
+        sensor_id,
+        field,
+        value,
+        device_name,
+        device_model,
+        is_rtl=True,
+        friendly_name=None,
+    ):
+        status = {
+            "accepted": False,
+            "published": False,
+            "reason": "",
+            "topics": [],
+        }
+
         if value is None:
-            return
+            status["reason"] = "none_value"
+            return status
 
         clean_id = clean_mac(sensor_id) 
 
-        # Host/bridge entities should always publish regardless of discovery toggle.
+        # Host/bridge entities should always publish.
         is_host_entity = str(device_model) == str(config.BRIDGE_NAME)
+        
+        # Non-host entities: track device count and check if known
         if not is_host_entity:
-            is_known_device = clean_id in self.discovered_device_ids
-            if (not self.allow_new_device_discovery) and (not is_known_device):
-                # Discovery is disabled and this is a brand-new device.
-                # Ignore it entirely so we don't track or create entities.
-                return
-
-            # Only track device list/count while discovery is enabled.
-            # When discovery is OFF, we still allow already-known devices to publish
-            # state updates, but we don't grow/change tracked_devices.
-            if self.allow_new_device_discovery:
-                self.discovered_device_ids.add(clean_id)
-                self.tracked_devices.add(device_name)
+            # Track device as active this runtime
+            prev_tracked_count = len(self.tracked_devices)
+            self.tracked_devices.add(device_name)
+            if len(self.tracked_devices) != prev_tracked_count:
                 self.device_count_channel.push(len(self.tracked_devices))
         else:
+            prev_tracked_count = len(self.tracked_devices)
             self.tracked_devices.add(device_name)
-            self.device_count_channel.push(len(self.tracked_devices))
+            if len(self.tracked_devices) != prev_tracked_count:
+                self.device_count_channel.push(len(self.tracked_devices))
+
+        status["accepted"] = True
+
+        compound_id = f"rtl433_{device_model}_{clean_id}"
         
         # Remember model for model-specific discovery/unit overrides.
-        self._device_model_by_id[clean_id] = str(device_model)
+        self._device_model_by_id[compound_id] = str(device_model)
 
-        unique_id_base = clean_id
-        state_topic_base = clean_id
+        unique_id_base = compound_id
+        state_topic_base = compound_id
 
         unique_id = f"{unique_id_base}_{field}"
         state_topic = f"home/rtl_devices/{state_topic_base}/{field}"
@@ -660,7 +735,7 @@ class HomeNodeMQTT:
 
         # Remember raw utility readings so we can re-publish once commodity metadata is known.
         if field in {"Consumption", "consumption", "consumption_data", "meter_reading"}:
-            self._utility_last_raw[(clean_id, field)] = value
+            self._utility_last_raw[(compound_id, field)] = value
 
 
         # Commodity-aware normalization for utility meters:
@@ -668,7 +743,7 @@ class HomeNodeMQTT:
         #  - Gas (ERT-SCM): CCF -> optionally publish ft³ (x100)
         # NOTE: If commodity is unknown, we publish the raw value first and
         #       automatically re-publish once commodity metadata arrives.
-        prev_commodity = self._commodity_by_device.get(clean_id)
+        prev_commodity = self._commodity_by_device.get(compound_id)
 
         commodity_update = None
         if field in {"ert_type", "ertType", "ERTType"}:
@@ -683,18 +758,18 @@ class HomeNodeMQTT:
             commodity_update = infer_commodity_from_type_field(value)
 
         if commodity_update and commodity_update != prev_commodity:
-            self._commodity_by_device[clean_id] = commodity_update
+            self._commodity_by_device[compound_id] = commodity_update
             # Now that we know commodity, update any utility entities we already published.
-            self._refresh_utility_entities_for_device(clean_id, device_name, device_model)
+            self._refresh_utility_entities_for_device(compound_id, clean_id, device_name, device_model)
 
         meta_override = None
         if field in {"Consumption", "consumption", "consumption_data", "meter_reading"}:
-            meta_override = self._utility_meta_override(clean_id, field)
+            meta_override = self._utility_meta_override(compound_id, field)
 
 
         # Apply commodity-aware normalization for utility meter readings.
         if field in {"Consumption", "consumption", "consumption_data", "meter_reading"}:
-            out_value = self._utility_normalize_value(clean_id, field, out_value, device_model)
+            out_value = self._utility_normalize_value(compound_id, field, out_value, device_model)
 
         # battery_ok: 1/True => battery OK, 0/False => battery LOW
         # Home Assistant's binary_sensor device_class "battery" expects:
@@ -707,7 +782,7 @@ class HomeNodeMQTT:
 
             now = time.time()
             st = self._battery_state.setdefault(
-                clean_id,
+                compound_id,
                 {
                     "latched_low": False,
                     "last_low": None,
@@ -759,17 +834,21 @@ class HomeNodeMQTT:
             if friendly_name is None:
                 friendly_name = "Battery Low"
 
-        discovery_published_now = self._publish_discovery(
+        discovery_published_now, topics = self._publish_discovery(
             field,
             state_topic,
             unique_id,
             device_name,
             device_model,
+            compound_id=compound_id,
             friendly_name_override=friendly_name,
             domain=domain,
             extra_payload=extra_payload,
             meta_override=meta_override,
         )
+
+        if topics:
+            status["topics"].extend(topics)
 
         unique_id_v2 = f"{unique_id}{config.ID_SUFFIX}"
         value_changed = (self.last_sent_values.get(unique_id_v2) != out_value) or bool(discovery_published_now)
@@ -777,8 +856,13 @@ class HomeNodeMQTT:
         if value_changed or is_rtl:
             self.client.publish(state_topic, str(out_value), retain=True)
             self.last_sent_values[unique_id_v2] = out_value
+            status["published"] = True
 
             if value_changed:
                 # --- NEW: Check Verbosity Setting ---
                 if config.VERBOSE_TRANSMISSIONS:
                     print(f" -> TX {device_name} [{field}]: {out_value}")
+
+        if not status["reason"]:
+            status["reason"] = "published" if status["published"] else "accepted_no_state_publish"
+        return status
