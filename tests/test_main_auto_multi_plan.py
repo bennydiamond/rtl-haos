@@ -50,6 +50,9 @@ class DummyMQTT:
     def cleanup_device_discovered_topics(self, clean_id):
         pass
 
+    def publish_known_devices_select(self):
+        pass
+
 
 class DummyProcessor:
     def __init__(self, mqtt_handler, *args, **kwargs):

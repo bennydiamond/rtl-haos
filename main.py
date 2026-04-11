@@ -195,9 +195,14 @@ def main():
         known_device_store=known_store,
         get_discovery_enabled_callback=mqtt_handler._get_discovery_enabled,
         mqtt_cleanup_callback=mqtt_handler.cleanup_device_discovered_topics,
+        mqtt_update_select_callback=mqtt_handler.publish_known_devices_select,
     )
     
     mqtt_handler.on_nuke_callback = known_device_manager.clear_all_devices
+    mqtt_handler.get_known_devices_callback = known_device_manager.get_known_devices
+    mqtt_handler.remove_device_callback = known_device_manager.remove_device
+
+    mqtt_handler.publish_known_devices_select()
 
     processor = DataProcessor(
         mqtt_handler,

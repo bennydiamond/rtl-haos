@@ -28,6 +28,9 @@ class DummyMQTT:
     def cleanup_device_discovered_topics(self, clean_id):
         pass
 
+    def publish_known_devices_select(self):
+        pass
+
 
 class DummyProcessor:
     """Standard mock data processor for main.py tests."""
@@ -67,8 +70,14 @@ class DummyKnownStore:
 class DummyKnownDeviceManager:
     """Standard mock known device manager for main.py tests."""
     
-    def __init__(self, known_device_store=None, get_discovery_enabled_callback=None, mqtt_cleanup_callback=None):
+    def __init__(self, *args, **kwargs):
         pass
 
     def clear_all_devices(self):
+        pass
+
+    def get_known_devices(self):
+        return set()
+
+    def remove_device(self, compound_id):
         pass

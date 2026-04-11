@@ -70,6 +70,7 @@ def test_main_sets_slot_for_missing_ids_in_manual_mode(mocker):
         def stop(self): return
         def _get_discovery_enabled(self): return True
         def cleanup_device_discovered_topics(self, clean_id): pass
+        def publish_known_devices_select(self): pass
 
     class DummyProcessor:
         def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt

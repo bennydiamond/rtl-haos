@@ -161,6 +161,11 @@ class HomeNodeMQTT:
         # Callback triggered when a full Nuke completes (e.g. to wipe known devices)
         self.on_nuke_callback = None
 
+        # Callbacks for Single Device Deletion
+        self.get_known_devices_callback = None
+        self.remove_device_callback = None
+        self.selected_device_to_remove = "None"
+
         # Track one-time migrations (e.g., entity type/domain changes)
         self.migration_cleared = set()
 
@@ -293,11 +298,20 @@ class HomeNodeMQTT:
             self.discovery_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/discovery_new_devices/state"
             c.subscribe(self.discovery_command_topic)
             
+            # 5. Subscribe to Single Device Remove Commands
+            self.remove_device_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/remove_device/set"
+            self.known_devices_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/set"
+            self.known_devices_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/state"
+            c.subscribe(self.remove_device_command_topic)
+            c.subscribe(self.known_devices_command_topic)
+
             # 4. Publish host control entities
             self._publish_nuke_button()
             self._publish_restart_button()
             self._publish_discovery_toggle_switch()
             self._publish_discovery_toggle_state()
+            self._publish_remove_device_button()
+            self.publish_known_devices_select()
         else:
             print(f"[MQTT] Connection Failed! Code: {rc}")
 
@@ -327,6 +341,25 @@ class HomeNodeMQTT:
                     self._publish_discovery_toggle_state()
 
                     print(f"[MQTT] New-device discovery set to: {state_txt}")
+                return
+
+            # 5. Handle Known Devices Dropdown
+            known_devices_command_topic = getattr(self, "known_devices_command_topic", None)
+            if known_devices_command_topic and msg.topic == known_devices_command_topic:
+                selected = msg.payload.decode("utf-8") if isinstance(msg.payload, (bytes, bytearray)) else str(msg.payload)
+                self.selected_device_to_remove = selected
+                self.client.publish(self.known_devices_state_topic, selected, retain=True)
+                return
+
+            # 6. Handle Remove Single Device Button
+            remove_device_command_topic = getattr(self, "remove_device_command_topic", None)
+            if remove_device_command_topic and msg.topic == remove_device_command_topic:
+                target = self.selected_device_to_remove
+                if target and target != "None" and callable(self.remove_device_callback):
+                    print(f"[MQTT] Requesting removal of single device: {target}")
+                    self.remove_device_callback(target)
+                    self.selected_device_to_remove = "None"
+                    self.publish_known_devices_select()
                 return
 
             # 4. Handle Nuke Scanning (Search & Destroy)
@@ -433,6 +466,69 @@ class HomeNodeMQTT:
         state_txt = "ON" if self.allow_new_device_discovery else "OFF"
         self.client.publish(self.discovery_state_topic, state_txt, retain=True)
 
+    def publish_known_devices_select(self):
+        """Creates the 'Known Devices' dropdown."""
+        sys_id = get_system_mac().replace(":", "").lower()
+        unique_id = f"rtl_bridge_known_devices{config.ID_SUFFIX}"
+
+        options = ["None"]
+        if callable(self.get_known_devices_callback):
+            try:
+                options += sorted(list(self.get_known_devices_callback()))
+            except Exception:
+                pass
+
+        if self.selected_device_to_remove not in options:
+            self.selected_device_to_remove = "None"
+
+        payload = {
+            "name": "Known Devices",
+            "command_topic": getattr(self, "known_devices_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/set"),
+            "state_topic": getattr(self, "known_devices_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/state"),
+            "options": options,
+            "unique_id": unique_id,
+            "icon": "mdi:format-list-bulleted",
+            "entity_category": "config",
+            "device": {
+                "identifiers": [f"rtl433_{config.BRIDGE_NAME}_{sys_id}"],
+                "manufacturer": "rtl-haos",
+                "model": config.BRIDGE_NAME,
+                "name": f"{config.BRIDGE_NAME} ({sys_id})",
+                "sw_version": self.sw_version,
+            },
+            "availability_topic": self.TOPIC_AVAILABILITY,
+        }
+
+        config_topic = f"homeassistant/select/{unique_id}/config"
+        self.client.publish(config_topic, json.dumps(payload), retain=True)
+        
+        state_topic = getattr(self, "known_devices_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/state")
+        self.client.publish(state_topic, self.selected_device_to_remove, retain=True)
+
+    def _publish_remove_device_button(self):
+        """Creates the 'Remove Selected Device' button."""
+        sys_id = get_system_mac().replace(":", "").lower()
+        unique_id = f"rtl_bridge_remove_device{config.ID_SUFFIX}"
+        
+        payload = {
+            "name": "Remove Selected Device",
+            "command_topic": getattr(self, "remove_device_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/remove_device/set"),
+            "unique_id": unique_id,
+            "icon": "mdi:delete-sweep",
+            "entity_category": "config",
+            "device": {
+                "identifiers": [f"rtl433_{config.BRIDGE_NAME}_{sys_id}"],
+                "manufacturer": "rtl-haos",
+                "model": config.BRIDGE_NAME,
+                "name": f"{config.BRIDGE_NAME} ({sys_id})",
+                "sw_version": self.sw_version
+            },
+            "availability_topic": self.TOPIC_AVAILABILITY
+        }
+        
+        config_topic = f"homeassistant/button/{unique_id}/config"
+        self.client.publish(config_topic, json.dumps(payload), retain=True)
+
     def _get_discovery_enabled(self) -> bool:
         """Return current discovery toggle state.
         
@@ -537,6 +633,8 @@ class HomeNodeMQTT:
         self._publish_restart_button()
         self._publish_discovery_toggle_switch()
         self._publish_discovery_toggle_state()
+        self._publish_remove_device_button()
+        self.publish_known_devices_select()
         print("[NUKE] Host Entities restored.")
 
     def start(self):
