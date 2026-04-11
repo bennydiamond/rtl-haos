@@ -105,6 +105,7 @@ FIELD_META = {
     
 
     # --- Radio Diagnostics ---
+    "last_seen":            (None, "timestamp", "mdi:clock-outline", "Last Seen"),
     "freq":                 ("MHz", "frequency", "mdi:sine-wave", "Frequency"),
     "freq1":                ("MHz", "frequency", "mdi:sine-wave", "Frequency"),
     "freq2":                ("MHz", "frequency", "mdi:sine-wave", "Frequency"),

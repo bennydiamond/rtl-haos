@@ -919,6 +919,9 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                             clean_id=clean_id,
                         )
 
+                    # Inject Last Seen timestamp (ISO 8601 UTC) for Home Assistant
+                    data["last_seen"] = time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime())
+
                     flat = flatten(data)
                     for key, value in flat.items():
                         if key in getattr(config, "SKIP_KEYS", []):

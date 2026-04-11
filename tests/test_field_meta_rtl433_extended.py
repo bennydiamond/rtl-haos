@@ -60,6 +60,9 @@ EXPECTED = {
     "total_kWh": ('kWh', 'energy', 'mdi:counter', 'Energy Total'),
     "voltage_V": ('V', 'voltage', 'mdi:sine-wave', 'Voltage'),
     "current_A": ('A', 'current', 'mdi:current-ac', 'Current'),
+
+    # Radio diagnostics
+    "last_seen": (None, 'timestamp', 'mdi:clock-outline', 'Last Seen'),
 }
 
 

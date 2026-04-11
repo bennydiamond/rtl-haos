@@ -119,6 +119,10 @@ def test_rtl_loop_parsing(mocker, mock_subprocess):
     calls_f = [c for c in mock_proc_logic.dispatch_reading.call_args_list if "456" in str(c)]
     assert len(calls_f) > 0
 
+    # Verify last_seen was injected and dispatched
+    calls_last_seen = [c for c in mock_proc_logic.dispatch_reading.call_args_list if c.args[1] == "last_seen"]
+    assert len(calls_last_seen) > 0
+
 def test_flatten_nested_json():
     """Ensures nested JSON objects are flattened into single-level keys."""
     input_data = {
