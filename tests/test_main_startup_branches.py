@@ -22,6 +22,7 @@ def test_main_manual_config_duplicate_ids_and_unconfigured_hardware(mocker, caps
         def stop(self): return
         def _get_discovery_enabled(self): return self.allow_new_device_discovery
         def cleanup_device_discovered_topics(self, clean_id): pass
+        def publish_known_devices_select(self): pass
 
     class DummyProcessor:
         def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt
@@ -117,6 +118,7 @@ def test_main_auto_mode_warns_when_ignoring_extra_radios(mocker, capsys):
         def stop(self): return
         def _get_discovery_enabled(self): return True
         def cleanup_device_discovered_topics(self, clean_id): pass
+        def publish_known_devices_select(self): pass
 
     class DummyProcessor:
         def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt
@@ -191,6 +193,7 @@ def test_main_deduplicates_hardware_serials(mocker, capsys):
         def stop(self): return
         def _get_discovery_enabled(self): return True
         def cleanup_device_discovered_topics(self, clean_id): pass
+        def publish_known_devices_select(self): pass
 
     class DummyProcessor:
         def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt

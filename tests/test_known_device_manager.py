@@ -23,11 +23,17 @@ def mock_mqtt_cleanup():
 
 
 @pytest.fixture
-def manager(mock_store, mock_get_discovery, mock_mqtt_cleanup):
+def mock_mqtt_update_select():
+    return Mock()
+
+
+@pytest.fixture
+def manager(mock_store, mock_get_discovery, mock_mqtt_cleanup, mock_mqtt_update_select):
     return KnownDeviceManager(
         known_device_store=mock_store,
         get_discovery_enabled_callback=mock_get_discovery,
         mqtt_cleanup_callback=mock_mqtt_cleanup,
+        mqtt_update_select_callback=mock_mqtt_update_select,
     )
 
 
@@ -70,6 +76,7 @@ def test_add_or_update_device_adds_and_saves(manager, mock_store):
         "rtl433_ModelB_456": {"name": "ModelB 456", "topics": ["t2"]},
     }
     mock_store.save_devices.assert_called_once_with(expected_devices)
+    manager._mqtt_update_select.assert_called_once()
 
 
 def test_add_or_update_device_merges_new_topics_to_existing_device(manager, mock_store):
@@ -79,6 +86,7 @@ def test_add_or_update_device_merges_new_topics_to_existing_device(manager, mock
         "rtl433_ModelA_123": {"name": "ModelA 123", "topics": ["t1", "t2"]},
     }
     mock_store.save_devices.assert_called_once_with(expected_devices)
+    manager._mqtt_update_select.assert_called_once()
 
 
 def test_add_or_update_device_ignores_existing(manager, mock_store):
@@ -86,6 +94,7 @@ def test_add_or_update_device_ignores_existing(manager, mock_store):
 
     assert len(manager.get_known_devices()) == 1
     mock_store.save_devices.assert_not_called()
+    manager._mqtt_update_select.assert_not_called()
 
 
 def test_add_or_update_device_handles_save_error(manager, mock_store, capsys):
@@ -104,6 +113,7 @@ def test_remove_device_removes_saves_and_cleans_up_mqtt(manager, mock_store, moc
     assert "rtl433_ModelA_123" not in manager.get_known_devices()
     mock_store.save_devices.assert_called_once_with({})
     mock_mqtt_cleanup.assert_called_once_with(["t1"], "ModelA 123")
+    manager._mqtt_update_select.assert_called_once()
 
 
 def test_remove_device_ignores_unknown(manager, mock_store, mock_mqtt_cleanup):
@@ -111,6 +121,23 @@ def test_remove_device_ignores_unknown(manager, mock_store, mock_mqtt_cleanup):
 
     mock_store.save_devices.assert_not_called()
     mock_mqtt_cleanup.assert_not_called()
+    manager._mqtt_update_select.assert_not_called()
+
+
+def test_remove_device_handles_save_error(manager, mock_store, mock_mqtt_cleanup, capsys):
+    # Pre-populate a device
+    manager.known_devices["rtl433_ModelB_456"] = {"name": "ModelB 456", "topics": ["t2"]}
+    
+    mock_store.save_devices.side_effect = IOError("Disk full")
+
+    manager.remove_device("rtl433_ModelB_456")
+
+    # Ensure it was re-added on failure and didn't trigger mqtt updates
+    assert "rtl433_ModelB_456" in manager.get_known_devices()
+    out = capsys.readouterr().out
+    assert "Error persisting removal" in out
+    mock_mqtt_cleanup.assert_not_called()
+    manager._mqtt_update_select.assert_not_called()
 
 
 def test_remove_device_handles_invalid_format(manager, mock_store, mock_mqtt_cleanup):
@@ -118,6 +145,7 @@ def test_remove_device_handles_invalid_format(manager, mock_store, mock_mqtt_cle
 
     mock_store.save_devices.assert_not_called()
     mock_mqtt_cleanup.assert_not_called()
+    manager._mqtt_update_select.assert_not_called()
 
 
 def test_clear_all_devices_removes_all_and_saves(manager, mock_store):
@@ -125,6 +153,17 @@ def test_clear_all_devices_removes_all_and_saves(manager, mock_store):
 
     assert manager.get_known_devices() == set()
     mock_store.save_devices.assert_called_once_with({})
+    manager._mqtt_update_select.assert_called_once()
+
+
+def test_clear_all_devices_handles_save_error(manager, mock_store, capsys):
+    mock_store.save_devices.side_effect = IOError("Disk full")
+    
+    manager.clear_all_devices()
+    
+    out = capsys.readouterr().out
+    assert "Error persisting clear_all" in out
+    manager._mqtt_update_select.assert_not_called()
 
 
 def test_get_all_known_devices_snapshot_returns_copy(manager):

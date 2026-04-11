@@ -95,6 +95,7 @@ def test_main_smoke_run_exits_cleanly(mocker):
         def stop(self): pass
         def _get_discovery_enabled(self): return self.allow_new_device_discovery
         def cleanup_device_discovered_topics(self, clean_id): pass
+        def publish_known_devices_select(self): pass
 
     class DummyKnownStore:
         def __init__(self, path=None):
@@ -103,9 +104,11 @@ def test_main_smoke_run_exits_cleanly(mocker):
         def save_ids(self, ids): pass
 
     class DummyKnownDeviceManager:
-        def __init__(self, known_device_store=None, get_discovery_enabled_callback=None, mqtt_cleanup_callback=None):
+        def __init__(self, *args, **kwargs):
             pass
         def clear_all_devices(self): pass
+        def get_known_devices(self): return set()
+        def remove_device(self, compound_id): pass
 
     class DummyProcessor:
         def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt

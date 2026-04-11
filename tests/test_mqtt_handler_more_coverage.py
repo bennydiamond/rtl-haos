@@ -193,6 +193,32 @@ def test_on_message_discovery_toggle_switch(monkeypatch):
     assert any(t == h.discovery_state_topic and p == "ON" and r is True for (t, p, r) in c.published)
 
 
+def test_on_message_known_devices_dropdown_select(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    h._on_connect(c, None, None, rc=0)
+
+    msg = types.SimpleNamespace(topic=h.known_devices_command_topic, payload=b"rtl433_Test_123")
+    h._on_message(c, None, msg)
+
+    assert h.selected_device_to_remove == "rtl433_Test_123"
+    assert any(t == h.known_devices_state_topic and p == "rtl433_Test_123" and r is True for (t, p, r) in c.published)
+
+
+def test_on_message_remove_device_button(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    h._on_connect(c, None, None, rc=0)
+
+    called_with = []
+    h.remove_device_callback = lambda t: called_with.append(t)
+    
+    h.selected_device_to_remove = "rtl433_Test_123"
+    msg = types.SimpleNamespace(topic=h.remove_device_command_topic, payload=b"PRESS")
+    h._on_message(c, None, msg)
+
+    assert called_with == ["rtl433_Test_123"]
+    assert h.selected_device_to_remove == "None"
+    assert any(t == h.known_devices_state_topic and p == "None" and r is True for (t, p, r) in c.published)
+
 def test_on_message_before_connect_is_caught(monkeypatch, capsys):
     h, c = _make_handler(monkeypatch)
 
@@ -288,6 +314,28 @@ def test_nuke_all_and_stop_scan(monkeypatch):
     assert any(t.endswith("/availability") and p == "online" and r is True for (t, p, r) in c.published)
     assert any(t.startswith("homeassistant/button/rtl_bridge_nuke_T/config") for (t, _, _) in c.published)
     assert any(t.startswith("homeassistant/button/rtl_bridge_restart_T/config") for (t, _, _) in c.published)
+
+
+def test_cleanup_device_discovered_topics(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    
+    h.discovery_published.add("dev1_temp")
+    h._discovery_sig["dev1_temp"] = "sig"
+    h.last_sent_values["dev1_temp"] = "20"
+    h.tracked_devices.add("Device1")
+    
+    topics = [
+        "homeassistant/sensor/dev1_temp/config",
+        "home/rtl_devices/rtl433_Model_dev1/temp"
+    ]
+    h.cleanup_device_discovered_topics(topics, "Device1")
+    
+    assert any(t == topics[0] and p == "" and r is True for (t, p, r) in c.published)
+    assert any(t == topics[1] and p == "" and r is True for (t, p, r) in c.published)
+    assert "dev1_temp" not in h.discovery_published
+    assert "dev1_temp" not in h._discovery_sig
+    assert "dev1_temp" not in h.last_sent_values
+    assert "Device1" not in h.tracked_devices
 
 
 def test_publish_discovery_branches_state_class_and_expire(monkeypatch):
