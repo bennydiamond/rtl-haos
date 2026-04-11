@@ -47,14 +47,14 @@ RTL-HAOS publishes several HA entities (buttons, switches, and selects) under th
 - `home/status/rtl_bridge<ID_SUFFIX>/nuke/set` (Delete Entities; press 5x)
 - `home/status/rtl_bridge<ID_SUFFIX>/restart/set` (Restart Radios)
 - `home/status/rtl_bridge<ID_SUFFIX>/remove_device/set` (Remove Selected Device button)
-- `home/status/rtl_bridge<ID_SUFFIX>/known_devices/set` (Known Devices dropdown selection)
+- `home/status/rtl_bridge<ID_SUFFIX>/known_devices/set` (Select Device to remove dropdown selection)
 - `home/status/rtl_bridge<ID_SUFFIX>/discovery_new_devices/set` (Toggle New Device Discovery)
 
 ## Entity cleanup ("Delete Entities")
 
 RTL-HAOS provides two mechanisms for cleaning up stale entities:
 
-1. **Single Device Deletion:** By using the "Known Devices" dropdown and pressing "Remove Selected Device", RTL-HAOS will specifically target and overwrite the retained MQTT config and state topics for that single device. It also permanently deletes the device from the `known_devices.json` persistence file.
+1. **Single Device Deletion:** By using the "Select Device to remove" dropdown and pressing "Remove Selected Device", RTL-HAOS will specifically target and overwrite the retained MQTT config and state topics for that single device. It also permanently deletes the device from the `known_devices.json` persistence file.
 
 2. **Nuke All ("Delete Entities"):** The global cleanup routine subscribes to `homeassistant/+/+/config` and deletes retained discovery configs where the discovery payload has `device.manufacturer` containing `rtl-haos`. 
    

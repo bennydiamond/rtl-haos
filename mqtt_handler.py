@@ -164,7 +164,7 @@ class HomeNodeMQTT:
         # Callbacks for Single Device Deletion
         self.get_known_devices_callback = None
         self.remove_device_callback = None
-        self.selected_device_to_remove = "None"
+        self.selected_device_to_remove = "No device selected"
 
         # Track one-time migrations (e.g., entity type/domain changes)
         self.migration_cleared = set()
@@ -355,10 +355,10 @@ class HomeNodeMQTT:
             remove_device_command_topic = getattr(self, "remove_device_command_topic", None)
             if remove_device_command_topic and msg.topic == remove_device_command_topic:
                 target = self.selected_device_to_remove
-                if target and target != "None" and callable(self.remove_device_callback):
+                if target and target != "No device selected" and callable(self.remove_device_callback):
                     print(f"[MQTT] Requesting removal of single device: {target}")
                     self.remove_device_callback(target)
-                    self.selected_device_to_remove = "None"
+                    self.selected_device_to_remove = "No device selected"
                     self.publish_known_devices_select()
                 return
 
@@ -471,7 +471,7 @@ class HomeNodeMQTT:
         sys_id = get_system_mac().replace(":", "").lower()
         unique_id = f"rtl_bridge_known_devices{config.ID_SUFFIX}"
 
-        options = ["None"]
+        options = ["No device selected"]
         if callable(self.get_known_devices_callback):
             try:
                 options += sorted(list(self.get_known_devices_callback()))
@@ -479,10 +479,10 @@ class HomeNodeMQTT:
                 pass
 
         if self.selected_device_to_remove not in options:
-            self.selected_device_to_remove = "None"
+            self.selected_device_to_remove = "No device selected"
 
         payload = {
-            "name": "Known Devices",
+            "name": "Select Device to remove",
             "command_topic": getattr(self, "known_devices_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/set"),
             "state_topic": getattr(self, "known_devices_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/state"),
             "options": options,

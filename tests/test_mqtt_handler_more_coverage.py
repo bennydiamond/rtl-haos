@@ -216,8 +216,8 @@ def test_on_message_remove_device_button(monkeypatch):
     h._on_message(c, None, msg)
 
     assert called_with == ["rtl433_Test_123"]
-    assert h.selected_device_to_remove == "None"
-    assert any(t == h.known_devices_state_topic and p == "None" and r is True for (t, p, r) in c.published)
+    assert h.selected_device_to_remove == "No device selected"
+    assert any(t == h.known_devices_state_topic and p == "No device selected" and r is True for (t, p, r) in c.published)
 
 def test_on_message_before_connect_is_caught(monkeypatch, capsys):
     h, c = _make_handler(monkeypatch)

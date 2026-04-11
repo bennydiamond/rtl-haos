@@ -583,7 +583,7 @@ If you want to remove a single stale, unwanted, or accidentally discovered devic
 
 1. Navigate to **Settings** → **Devices**
 2. Open your Bridge device (named like `rtl-haos-bridge (xxxxxxxxxxxx)`)
-3. Find the **"Known Devices"** dropdown (`select` entity) and choose the specific device you want to delete.
+3. Find the **"Select Device to remove"** dropdown (`select` entity) and choose the specific device you want to remove.
 4. Press the **"Remove Selected Device"** button.
 
 What happens?
