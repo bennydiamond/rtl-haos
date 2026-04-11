@@ -24,6 +24,7 @@ FIELD_META = {
     "sys_disk":             ("%", "none", "mdi:harddisk", "Disk Usage"),
     "sys_temp":             ("°C", "temperature", "mdi:thermometer-lines", "CPU Temp"),
     "sys_uptime":           ("s", "duration", "mdi:clock-start", "System Uptime"),
+    "sys_bridge_uptime":    ("s", "duration", "mdi:timer-outline", "RTL-HAOS Uptime"),
     "model":                ("", "none", "mdi:tag", "Model"),
 
     # --- Magnetometer ---

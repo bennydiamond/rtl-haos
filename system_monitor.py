@@ -117,7 +117,7 @@ def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME):
             # mqtt_handler.send_sensor(DEVICE_ID, "sys_device_list", dev_list_str, device_name, MODEL_NAME, is_rtl=True)
 
             uptime_s = int(time.monotonic() - start_time)
-            mqtt_handler.send_sensor(DEVICE_ID, "sys_uptime", uptime_s, device_name, MODEL_NAME, is_rtl=True)
+            mqtt_handler.send_sensor(DEVICE_ID, "sys_bridge_uptime", uptime_s, device_name, MODEL_NAME, is_rtl=True)
 
             # B. Configuration Lists (Sent as Diagnostics)
             # We fetch these fresh from config every loop in case of future hot-reloads
