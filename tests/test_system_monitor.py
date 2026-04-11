@@ -54,6 +54,7 @@ def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME, interval=60, stop_eve
             print(f"[WARN] Hardware Monitor failed to start: {e}")
 
     print("[STARTUP] Starting System Monitor Loop...")
+    start_time = time.monotonic()
     
     i = 0
     while True:
@@ -67,6 +68,11 @@ def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME, interval=60, stop_eve
             dev_list_str = format_list_for_ha(devices) if count > 0 else "Scanning..."
 
             mqtt_handler.send_sensor(DEVICE_ID, "sys_device_count", count, device_name, MODEL_NAME, is_rtl=True)
+            
+            # B. Uptime
+            uptime_s = int(time.monotonic() - start_time)
+            mqtt_handler.send_sensor(DEVICE_ID, "sys_uptime", uptime_s, device_name, MODEL_NAME, is_rtl=True)
+            
             # mqtt_handler.send_sensor(DEVICE_ID, "sys_device_list", dev_list_str, device_name, MODEL_NAME, is_rtl=True)
 
         except Exception as e:

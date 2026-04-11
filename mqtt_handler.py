@@ -863,6 +863,8 @@ class HomeNodeMQTT:
         meta_override = None
         if field in {"Consumption", "consumption", "consumption_data", "meter_reading"}:
             meta_override = self._utility_meta_override(compound_id, field)
+        elif field == "sys_uptime":
+            meta_override = ("s", "duration", "mdi:timer-outline", "RTL-HAOS Uptime")
 
 
         # Apply commodity-aware normalization for utility meter readings.
