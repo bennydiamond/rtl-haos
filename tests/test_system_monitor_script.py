@@ -33,3 +33,12 @@ def test_system_stats_loop_one_iteration_sends_rtl_433_version(mocker):
         "Bridge",
         is_rtl=True,
     )
+
+    mqtt_handler.send_sensor.assert_any_call(
+        "dev123",
+        "sys_bridge_uptime",
+        mocker.ANY,
+        "Bridge (dev123)",
+        "Bridge",
+        is_rtl=True,
+    )

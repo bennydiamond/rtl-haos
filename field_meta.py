@@ -24,6 +24,7 @@ FIELD_META = {
     "sys_disk":             ("%", "none", "mdi:harddisk", "Disk Usage"),
     "sys_temp":             ("°C", "temperature", "mdi:thermometer-lines", "CPU Temp"),
     "sys_uptime":           ("s", "duration", "mdi:clock-start", "System Uptime"),
+    "sys_bridge_uptime":    ("s", "duration", "mdi:timer-outline", "RTL-HAOS Uptime"),
     "model":                ("", "none", "mdi:tag", "Model"),
 
     # --- Magnetometer ---
@@ -105,6 +106,7 @@ FIELD_META = {
     
 
     # --- Radio Diagnostics ---
+    "last_seen":            (None, "timestamp", "mdi:clock-outline", "Last Seen"),
     "freq":                 ("MHz", "frequency", "mdi:sine-wave", "Frequency"),
     "freq1":                ("MHz", "frequency", "mdi:sine-wave", "Frequency"),
     "freq2":                ("MHz", "frequency", "mdi:sine-wave", "Frequency"),
