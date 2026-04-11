@@ -34,25 +34,25 @@ def test_consumption_data_updates_to_kwh_after_ert_type(monkeypatch):
     # 1) consumption_data arrives first (before ert_type commodity hint)
     h.send_sensor("device_x", "consumption_data", 217504, "ERT-SCM deadbeef", "ERT-SCM")
 
-    cfg1 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="deadbeef_consumption_data_T")
+    cfg1 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_ERT-SCM_deadbeef_consumption_data_T")
     assert cfg1.get("device_class") == "gas"
     assert cfg1.get("unit_of_measurement") == "ft³"
 
-    st1 = last_state_payload(c, "deadbeef", "consumption_data")
+    st1 = last_state_payload(c, "rtl433_ERT-SCM_deadbeef", "consumption_data")
     assert_float_str(st1, 217504.0)
 
-    state_topic = "home/rtl_devices/deadbeef/consumption_data"
+    state_topic = "home/rtl_devices/rtl433_ERT-SCM_deadbeef/consumption_data"
     state_count_1 = _count_publishes(c, state_topic)
 
     # 2) ert_type arrives later indicating electric (4 is in the electric set)
     h.send_sensor("device_x", "ert_type", 4, "ERT-SCM deadbeef", "ERT-SCM")
 
-    cfg2 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="deadbeef_consumption_data_T")
+    cfg2 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_ERT-SCM_deadbeef_consumption_data_T")
     assert cfg2.get("device_class") == "energy"
     assert cfg2.get("unit_of_measurement") == "kWh"
 
     # Discovery metadata changed -> we should also re-publish the cached state.
-    st2 = last_state_payload(c, "deadbeef", "consumption_data")
+    st2 = last_state_payload(c, "rtl433_ERT-SCM_deadbeef", "consumption_data")
     assert_float_str(st2, 2175.04)
 
     state_count_2 = _count_publishes(c, state_topic)
@@ -72,17 +72,17 @@ def test_meter_type_does_not_require_gas_volume_unit(monkeypatch):
 
     # Consumption first
     h.send_sensor("device_x", "Consumption", 12345, "SCMplus deadbeef", "SCMplus")
-    cfg1 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="deadbeef_Consumption_T")
+    cfg1 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T")
     assert cfg1.get("device_class") == "gas"
     assert cfg1.get("unit_of_measurement") == "ft³"
 
     # MeterType later (no conversion expected; just ensure no crash and still ft³)
     h.send_sensor("device_x", "MeterType", "Gas", "SCMplus deadbeef", "SCMplus")
-    cfg2 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="deadbeef_Consumption_T")
+    cfg2 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T")
     assert cfg2.get("device_class") == "gas"
     assert cfg2.get("unit_of_measurement") == "ft³"
 
-    st = last_state_payload(c, "deadbeef", "Consumption")
+    st = last_state_payload(c, "rtl433_SCMplus_deadbeef", "Consumption")
     assert_float_str(st, 12345.0)
 
 
@@ -102,24 +102,24 @@ def test_gas_unit_ccf_converts_and_refreshes_after_meter_type(monkeypatch):
 
     # 1) Total arrives first (commodity unknown) -> default gas ft³ metadata.
     h.send_sensor("device_x", "Consumption", 12345, "SCMplus deadbeef", "SCMplus")
-    cfg1 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="deadbeef_Consumption_T")
+    cfg1 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T")
     assert cfg1.get("device_class") == "gas"
     assert cfg1.get("unit_of_measurement") == "ft³"
-    st1 = last_state_payload(c, "deadbeef", "Consumption")
+    st1 = last_state_payload(c, "rtl433_SCMplus_deadbeef", "Consumption")
     assert_float_str(st1, 12345.0)
 
-    state_topic = "home/rtl_devices/deadbeef/Consumption"
+    state_topic = "home/rtl_devices/rtl433_SCMplus_deadbeef/Consumption"
     state_count_1 = _count_publishes(c, state_topic)
 
     # 2) MeterType arrives later -> commodity becomes gas; refresh should update
     #    discovery to CCF and re-publish the cached total scaled by ÷100.
     h.send_sensor("device_x", "MeterType", "Gas", "SCMplus deadbeef", "SCMplus")
 
-    cfg2 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="deadbeef_Consumption_T")
+    cfg2 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T")
     assert cfg2.get("device_class") == "gas"
     assert cfg2.get("unit_of_measurement") == "CCF"
 
-    st2 = last_state_payload(c, "deadbeef", "Consumption")
+    st2 = last_state_payload(c, "rtl433_SCMplus_deadbeef", "Consumption")
     assert_float_str(st2, 123.45)
 
     state_count_2 = _count_publishes(c, state_topic)

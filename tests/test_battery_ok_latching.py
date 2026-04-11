@@ -45,26 +45,26 @@ def test_battery_ok_latches_low_and_clears_after_delay(monkeypatch):
     h.send_sensor("aa:bb", "battery_ok", 0, "Dev", "NotBridge", is_rtl=False)
 
     # Migration helper should clear any old numeric *sensor* entity once.
-    old_cfg_topic = "homeassistant/sensor/deadbeef_battery_ok_T/config"
+    old_cfg_topic = "homeassistant/sensor/rtl433_NotBridge_deadbeef_battery_ok_T/config"
     clears = [(t, p, r) for (t, p, r) in c.published if t == old_cfg_topic]
     assert len(clears) == 1
     assert clears[0][1] == ""
     assert clears[0][2] is True
 
     # Discovery is binary_sensor + inverted semantics.
-    cfg = _discovery_payload(c, "binary_sensor", "deadbeef_battery_ok_T")
+    cfg = _discovery_payload(c, "binary_sensor", "rtl433_NotBridge_deadbeef_battery_ok_T")
     assert cfg.get("device_class") == "battery"
     assert cfg.get("payload_on") == "ON"
     assert cfg.get("payload_off") == "OFF"
     assert cfg.get("expire_after") == 86400  # max(RTL_EXPIRE_AFTER, 86400)
 
-    state_topic = "home/rtl_devices/deadbeef/battery_ok"
+    state_topic = "home/rtl_devices/rtl433_NotBridge_deadbeef/battery_ok"
     _t, payload1, _r = last_published(c, state_topic)
     assert payload1 == "ON"
 
     # Immediately OK again (< clear_after) => still latched LOW
     h.send_sensor("aa:bb", "battery_ok", 1, "Dev", "NotBridge", is_rtl=False)
-    assert h._battery_state["deadbeef"]["latched_low"] is True
+    assert h._battery_state["rtl433_NotBridge_deadbeef"]["latched_low"] is True
 
     # After the clear window has passed, OK should clear the latch => OFF
     h.send_sensor("aa:bb", "battery_ok", 1, "Dev", "NotBridge", is_rtl=False)

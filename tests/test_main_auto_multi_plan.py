@@ -25,8 +25,10 @@ class FakeThread:
 
 
 class DummyMQTT:
-    def __init__(self, version=None):
+    def __init__(self, version=None, *args, **kwargs):
         self.version = version
+        self.started = False
+        self.stopped = False
         self.device_count_channel = type(
             "_Ch",
             (),
@@ -42,9 +44,15 @@ class DummyMQTT:
     def stop(self):
         return None
 
+    def _get_discovery_enabled(self):
+        return True
+
+    def cleanup_device_discovered_topics(self, clean_id):
+        pass
+
 
 class DummyProcessor:
-    def __init__(self, mqtt_handler):
+    def __init__(self, mqtt_handler, *args, **kwargs):
         self.mqtt_handler = mqtt_handler
 
     def start_throttle_loop(self):
@@ -163,5 +171,3 @@ def test_auto_multi_three_radios_unknown_country_splits_868_915(monkeypatch):
 
     assert radios_by_slot[2]["freq"] == "915M"
     assert radios_by_slot[2]["hop_interval"] == 0
-
-

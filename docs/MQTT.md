@@ -42,13 +42,20 @@ Discovery payloads include:
 
 ## Maintenance command topics
 
-RTL-HAOS publishes two HA buttons under the **Bridge** device. When pressed, Home Assistant sends commands to:
+RTL-HAOS publishes several HA entities (buttons, switches, and selects) under the **Bridge** device for maintenance and configuration. When interacted with, Home Assistant sends commands to:
 
 - `home/status/rtl_bridge<ID_SUFFIX>/nuke/set` (Delete Entities; press 5x)
 - `home/status/rtl_bridge<ID_SUFFIX>/restart/set` (Restart Radios)
+- `home/status/rtl_bridge<ID_SUFFIX>/remove_device/set` (Remove Selected Device button)
+- `home/status/rtl_bridge<ID_SUFFIX>/known_devices/set` (Known Devices dropdown selection)
+- `home/status/rtl_bridge<ID_SUFFIX>/discovery_new_devices/set` (Toggle New Device Discovery)
 
 ## Entity cleanup ("Delete Entities")
 
-The cleanup routine subscribes to `homeassistant/+/+/config` and deletes retained discovery configs where the discovery payload has `device.manufacturer` containing `rtl-haos`.
+RTL-HAOS provides two mechanisms for cleaning up stale entities:
 
-If you run multiple RTL-HAOS bridges on the same broker, this cleanup can remove discovery entries for all of them.
+1. **Single Device Deletion:** By using the "Known Devices" dropdown and pressing "Remove Selected Device", RTL-HAOS will specifically target and overwrite the retained MQTT config and state topics for that single device. It also permanently deletes the device from the `known_devices.json` persistence file.
+
+2. **Nuke All ("Delete Entities"):** The global cleanup routine subscribes to `homeassistant/+/+/config` and deletes retained discovery configs where the discovery payload has `device.manufacturer` containing `rtl-haos`. 
+   
+   *Note: If you run multiple RTL-HAOS bridges on the same broker, this global cleanup scan can accidentally remove discovery entries for all of them.*

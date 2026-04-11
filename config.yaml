@@ -26,6 +26,7 @@ options:
   rtl_show_timestamps: false
   verbose_transmissions: false  # Log every single MQTT publish
   discovery_new_devices: true   # Set to false to start with toggle OFF
+  known_devices_path: /data/known_devices.json
 
   # Advanced: pass through extra rtl_433 flags and/or a config file.
   # rtl_433_args acts as a GLOBAL OVERRIDE: if it includes an option that is also
@@ -88,6 +89,7 @@ schema:
   rtl_show_timestamps: bool
   verbose_transmissions: bool
   discovery_new_devices: bool
+  known_devices_path: str?
 
   # Advanced rtl_433 passthrough
   rtl_433_args: str?

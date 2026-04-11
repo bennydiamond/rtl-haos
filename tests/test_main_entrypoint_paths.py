@@ -33,7 +33,7 @@ class DummyThread:
 class DummyMQTT:
     instances = []
 
-    def __init__(self, version="Unknown"):
+    def __init__(self, version="Unknown", *args, **kwargs):
         self.version = version
         self.started = False
         self.stopped = False
@@ -57,9 +57,15 @@ class DummyMQTT:
     def send_sensor(self, *_args, **_kwargs):
         return None
 
+    def _get_discovery_enabled(self):
+        return True
+
+    def cleanup_device_discovered_topics(self, clean_id):
+        pass
+
 
 class DummyProcessor:
-    def __init__(self, mqtt_handler):
+    def __init__(self, mqtt_handler, *args, **kwargs):
         self.mqtt = mqtt_handler
 
     def start_throttle_loop(self):

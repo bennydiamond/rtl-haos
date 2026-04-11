@@ -10,8 +10,15 @@ class DummyMQTT:
     def __init__(self):
         self.calls = []
 
-    def send_sensor(self, clean_id, field, value, dev_name, model, is_rtl=True):
-        self.calls.append((clean_id, field, value, dev_name, model, is_rtl))
+    def send_sensor(self, clean_id, field, value, dev_name, model, is_rtl=True, is_known_device=False):
+        self.calls.append((clean_id, field, value, dev_name, model, is_rtl, is_known_device))
+        return {
+            "accepted": True,
+            "published": True,
+            "known_device": True,
+            "new_device_discovered": not is_known_device,
+            "reason": "published",
+        }
 
 
 def test_dispatch_reading_skips_none_value(monkeypatch):

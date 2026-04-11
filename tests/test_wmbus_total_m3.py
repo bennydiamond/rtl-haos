@@ -26,10 +26,10 @@ def test_wmbus_total_m3_publishes_as_water_m3(monkeypatch):
 
     h.send_sensor("device_x", "total_m3", 161.963, "EquaScan deadbeef", "EquaScan")
 
-    cfg = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="deadbeef_total_m3_T")
+    cfg = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_EquaScan_deadbeef_total_m3_T")
     assert cfg.get("device_class") == "water"
     assert cfg.get("unit_of_measurement") == "m³"
     assert "entity_category" not in cfg
 
-    st = last_state_payload(c, "deadbeef", "total_m3")
+    st = last_state_payload(c, "rtl433_EquaScan_deadbeef", "total_m3")
     assert_float_str(st, 161.963)

@@ -56,7 +56,7 @@ def test_main_sets_slot_for_missing_ids_in_manual_mode(mocker):
 
     # Stub MQTT + Processor
     class DummyMQTT:
-        def __init__(self, version=None):
+        def __init__(self, version=None, *args, **kwargs):
             self.version = version
             self.device_count_channel = type(
                 "_Ch",
@@ -68,9 +68,11 @@ def test_main_sets_slot_for_missing_ids_in_manual_mode(mocker):
             )()
         def start(self): return
         def stop(self): return
+        def _get_discovery_enabled(self): return True
+        def cleanup_device_discovered_topics(self, clean_id): pass
 
     class DummyProcessor:
-        def __init__(self, mqtt): self.mqtt = mqtt
+        def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt
         def start_throttle_loop(self): return
 
     mocker.patch.object(main, "HomeNodeMQTT", DummyMQTT)
@@ -177,7 +179,8 @@ def test_radio_status_is_republished_after_nuke_scan(mocker, mock_config):
     # Publish a host radio status once
     sys_id = "aabbccddeeff"
     field = "radio_status_0"
-    unique_id = f"{sys_id}_{field}"
+    # Now uses compound_id as base
+    unique_id = f"rtl433_{config.BRIDGE_NAME}_{sys_id}_{field}"
     config_topic = f"homeassistant/sensor/{unique_id}/config"
 
     h.send_sensor(

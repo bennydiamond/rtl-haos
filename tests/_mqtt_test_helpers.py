@@ -43,8 +43,8 @@ def last_published(client: DummyClient, topic: str) -> Tuple[str, str, bool]:
     return matches[-1]
 
 
-def last_state_payload(client: DummyClient, clean_id: str, field: str) -> str:
-    topic = f"home/rtl_devices/{clean_id}/{field}"
+def last_state_payload(client: DummyClient, compound_id: str, field: str) -> str:
+    topic = f"home/rtl_devices/{compound_id}/{field}"
     _t, payload, _r = last_published(client, topic)
     return payload
 

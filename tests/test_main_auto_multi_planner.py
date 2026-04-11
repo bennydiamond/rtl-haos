@@ -24,9 +24,15 @@ class DummyMQTT:
     def stop(self):
         self.stopped = True
 
+    def _get_discovery_enabled(self):
+        return True
+
+    def cleanup_device_discovered_topics(self, clean_id):
+        pass
+
 
 class DummyProcessor:
-    def __init__(self, mqtt_handler):
+    def __init__(self, mqtt_handler, *args, **kwargs):
         self.mqtt_handler = mqtt_handler
 
     def start_throttle_loop(self):

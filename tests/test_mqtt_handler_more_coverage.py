@@ -107,6 +107,8 @@ def _make_handler(monkeypatch):
     monkeypatch.setattr(config, "MAIN_SENSORS", ["main_field"], raising=False)
     monkeypatch.setattr(config, "VERBOSE_TRANSMISSIONS", False, raising=False)
     monkeypatch.setattr(config, "DISCOVERY_NEW_DEVICES", True, raising=False)
+    if not getattr(config, "KNOWN_DEVICES_PATH", None):
+        monkeypatch.setattr(config, "KNOWN_DEVICES_PATH", "", raising=False)
     monkeypatch.setattr(
         config,
         "MQTT_SETTINGS",
@@ -266,6 +268,9 @@ def test_nuke_all_and_stop_scan(monkeypatch):
     h.last_sent_values["k"] = "v"
     h.tracked_devices.add("d")
 
+    called = []
+    h.on_nuke_callback = lambda: called.append(True)
+
     h.nuke_all()
     assert h.is_nuking is True
     assert "homeassistant/+/+/config" in c.subscribed
@@ -276,6 +281,8 @@ def test_nuke_all_and_stop_scan(monkeypatch):
     assert h.discovery_published == set()
     assert h.last_sent_values == {}
     assert h.tracked_devices == set()
+
+    assert called == [True]
 
     # availability restored online and buttons republished
     assert any(t.endswith("/availability") and p == "online" and r is True for (t, p, r) in c.published)
@@ -307,6 +314,7 @@ def test_publish_discovery_branches_state_class_and_expire(monkeypatch):
         unique_id="abc_gas_field",
         device_name="Bridge (deadbeef)",
         device_model=config.BRIDGE_NAME,
+        compound_id=f"rtl433_{config.BRIDGE_NAME}_abc",
         friendly_name_override=None,
     )
     topic, payload = _last_published_json(c, "homeassistant/sensor/")
@@ -321,6 +329,7 @@ def test_publish_discovery_branches_state_class_and_expire(monkeypatch):
         unique_id="abc_main_field",
         device_name="SomeDevice",
         device_model="NotBridge",
+        compound_id="rtl433_NotBridge_abc",
         friendly_name_override="Override Name",
     )
     _t2, p2 = _last_published_json(c, "homeassistant/sensor/")
@@ -335,6 +344,7 @@ def test_publish_discovery_branches_state_class_and_expire(monkeypatch):
         unique_id="abc_wind_dir",
         device_name="Dev",
         device_model="NotBridge",
+        compound_id="rtl433_NotBridge_abc",
         friendly_name_override=None,
     )
     _t3, p3 = _last_published_json(c, "homeassistant/sensor/")
@@ -347,6 +357,7 @@ def test_publish_discovery_branches_state_class_and_expire(monkeypatch):
         unique_id="abc_radio_status_0",
         device_name="Dev",
         device_model="NotBridge",
+        compound_id="rtl433_NotBridge_abc",
         friendly_name_override=None,
     )
     _t4, p4 = _last_published_json(c, "homeassistant/sensor/")
@@ -361,6 +372,7 @@ def test_publish_discovery_branches_state_class_and_expire(monkeypatch):
         unique_id="abc_bad_meta",
         device_name="Dev",
         device_model="NotBridge",
+        compound_id="rtl433_NotBridge_abc",
         friendly_name_override=None,
     )
     _t5, p5 = _last_published_json(c, "homeassistant/sensor/")
@@ -375,6 +387,7 @@ def test_publish_discovery_branches_state_class_and_expire(monkeypatch):
         unique_id="abc_gas_field",
         device_name="Bridge (deadbeef)",
         device_model=config.BRIDGE_NAME,
+        compound_id=f"rtl433_{config.BRIDGE_NAME}_abc",
     )
     assert len(c.published) == before
 
@@ -402,7 +415,7 @@ def test_send_sensor_value_none_and_verbose_and_no_resend(monkeypatch, capsys):
     assert ("-> tx" in out) or ("data" in out)
 
 
-    state_topic = "home/rtl_devices/deadbeef/door"
+    state_topic = "home/rtl_devices/rtl433_NotBridge_deadbeef/door"
     assert any(t == state_topic and p == "OPEN" and r is True for (t, p, r) in c.published)
 
     # Second send same value + is_rtl=False should NOT republish state
@@ -427,13 +440,13 @@ def test_battery_ok_publishes_binary_sensor_and_inverts_state(monkeypatch):
 
     # migration helper deletes any older numeric sensor config topic
     assert any(
-        t.startswith("homeassistant/sensor/deadbeef_battery_ok_T/config") and p == "" and r is True
+        t.startswith("homeassistant/sensor/rtl433_NotBridge_deadbeef_battery_ok_T/config") and p == "" and r is True
         for (t, p, r) in c.published
     )
 
     # Discovery should be under binary_sensor and include device_class battery
     topic, payload = _last_published_json(c, "homeassistant/binary_sensor/")
-    assert topic.startswith("homeassistant/binary_sensor/deadbeef_battery_ok_T/config")
+    assert topic.startswith("homeassistant/binary_sensor/rtl433_NotBridge_deadbeef_battery_ok_T/config")
     assert payload.get("device_class") == "battery"
     assert payload.get("payload_on") == "ON"
     assert payload.get("payload_off") == "OFF"
@@ -441,7 +454,7 @@ def test_battery_ok_publishes_binary_sensor_and_inverts_state(monkeypatch):
     assert "state_class" not in payload
 
     # State should be OFF when battery_ok==1
-    state_topic = "home/rtl_devices/deadbeef/battery_ok"
+    state_topic = "home/rtl_devices/rtl433_NotBridge_deadbeef/battery_ok"
     assert any(t == state_topic and p == "OFF" and r is True for (t, p, r) in c.published)
 
     # battery_ok=0 => battery is low => ON
@@ -470,27 +483,3 @@ def test_start_success_and_failure_and_stop(monkeypatch):
     c2.connect = boom_connect
     with pytest.raises(SystemExit):
         h2.start()
-
-
-def test_send_sensor_skips_new_device_when_discovery_toggle_off(monkeypatch):
-    h, c = _make_handler(monkeypatch)
-    h.allow_new_device_discovery = False
-
-    h.send_sensor("aa:bb", "door", "OPEN", "Dev", "NotBridge", is_rtl=False)
-
-    # No discovery or state publish for a brand-new non-host device.
-    assert c.published == []
-    assert h.tracked_devices == set()
-    assert h.discovered_device_ids == set()
-
-
-def test_send_sensor_known_device_still_publishes_when_discovery_toggle_off(monkeypatch):
-    h, c = _make_handler(monkeypatch)
-    h.allow_new_device_discovery = False
-    h.discovered_device_ids.add("deadbeef")
-
-    h.send_sensor("aa:bb", "door", "OPEN", "Dev", "NotBridge", is_rtl=False)
-
-    assert any(t.startswith("homeassistant/sensor/deadbeef_door_T/config") for (t, _, _) in c.published)
-    assert any(t == "home/rtl_devices/deadbeef/door" and p == "OPEN" and r is True for (t, p, r) in c.published)
-    assert "Dev" not in h.tracked_devices

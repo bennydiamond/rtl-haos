@@ -133,6 +133,8 @@ from utils import (
 )
 from system_monitor import system_stats_loop
 from data_processor import DataProcessor
+from known_device_store import KnownDeviceStore
+from known_device_manager import KnownDeviceManager
 from rtl_manager import rtl_loop, discover_rtl_devices
 
 def get_version():
@@ -181,10 +183,26 @@ def main():
     show_logo(ver)
     time.sleep(3)
 
+    known_store = KnownDeviceStore(getattr(config, "KNOWN_DEVICES_PATH", ""))
+    # Known devices are now loaded and managed exclusively by KnownDeviceManager.
+
     mqtt_handler = HomeNodeMQTT(version=ver)
     mqtt_handler.start()
 
-    processor = DataProcessor(mqtt_handler)
+    # Create KnownDeviceManager with callbacks to mqtt_handler
+    # Manager runs in processor thread context for thread safety
+    known_device_manager = KnownDeviceManager(
+        known_device_store=known_store,
+        get_discovery_enabled_callback=mqtt_handler._get_discovery_enabled,
+        mqtt_cleanup_callback=mqtt_handler.cleanup_device_discovered_topics,
+    )
+    
+    mqtt_handler.on_nuke_callback = known_device_manager.clear_all_devices
+
+    processor = DataProcessor(
+        mqtt_handler,
+        known_device_manager=known_device_manager,
+    )
     threading.Thread(target=processor.start_throttle_loop, daemon=True).start()
 
     sys_id = get_system_mac().replace(":", "").lower() 

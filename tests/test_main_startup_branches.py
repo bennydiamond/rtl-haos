@@ -7,8 +7,9 @@ def test_main_manual_config_duplicate_ids_and_unconfigured_hardware(mocker, caps
     mocker.patch.object(main, "check_dependencies", lambda: None)
 
     class DummyMQTT:
-        def __init__(self, version=None):
+        def __init__(self, version=None, *args, **kwargs):
             self.version = version
+            self.allow_new_device_discovery = True
             self.device_count_channel = type(
                 "_Ch",
                 (),
@@ -19,9 +20,11 @@ def test_main_manual_config_duplicate_ids_and_unconfigured_hardware(mocker, caps
             )()
         def start(self): return
         def stop(self): return
+        def _get_discovery_enabled(self): return self.allow_new_device_discovery
+        def cleanup_device_discovered_topics(self, clean_id): pass
 
     class DummyProcessor:
-        def __init__(self, mqtt): self.mqtt = mqtt
+        def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt
         def start_throttle_loop(self): return
 
     class DummyThread:
@@ -100,7 +103,7 @@ def test_main_auto_mode_warns_when_ignoring_extra_radios(mocker, capsys):
     mocker.patch.object(main, "check_dependencies", lambda: None)
 
     class DummyMQTT:
-        def __init__(self, version=None):
+        def __init__(self, version=None, *args, **kwargs):
             self.version = version
             self.device_count_channel = type(
                 "_Ch",
@@ -112,9 +115,11 @@ def test_main_auto_mode_warns_when_ignoring_extra_radios(mocker, capsys):
             )()
         def start(self): return
         def stop(self): return
+        def _get_discovery_enabled(self): return True
+        def cleanup_device_discovered_topics(self, clean_id): pass
 
     class DummyProcessor:
-        def __init__(self, mqtt): self.mqtt = mqtt
+        def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt
         def start_throttle_loop(self): return
 
     class DummyThread:
@@ -172,7 +177,7 @@ def test_main_deduplicates_hardware_serials(mocker, capsys):
     mocker.patch.object(main, "get_system_mac", return_value="aa:bb:cc:dd:ee:ff")
     
     class DummyMQTT:
-        def __init__(self, version=None):
+        def __init__(self, version=None, *args, **kwargs):
             self.version = version
             self.device_count_channel = type(
                 "_Ch",
@@ -184,9 +189,11 @@ def test_main_deduplicates_hardware_serials(mocker, capsys):
             )()
         def start(self): return
         def stop(self): return
+        def _get_discovery_enabled(self): return True
+        def cleanup_device_discovered_topics(self, clean_id): pass
 
     class DummyProcessor:
-        def __init__(self, mqtt): self.mqtt = mqtt
+        def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt
         def start_throttle_loop(self): return
 
     mocker.patch.object(main, "HomeNodeMQTT", DummyMQTT)
