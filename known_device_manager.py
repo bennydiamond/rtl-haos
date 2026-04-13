@@ -450,3 +450,44 @@ class KnownDeviceManager:
                 options.discard(str(resolved.get("compound_id") or ""))
 
             return {opt for opt in options if opt}
+
+    def get_removable_options_with_names(self) -> dict[str, str]:
+        """Return {display_name: token} for the remove dropdown.
+
+        Regular known devices map their stored pretty name to their compound_id.
+        Alias-bound entries map alias_name to alias_name (token remove_device expects).
+        Alias-bound physical/logical compound_ids are excluded so they don't appear
+        as raw IDs alongside their alias entry.
+        """
+        with self._lock:
+            alias_bound_ids: set[str] = set()
+            for resolved in self._alias_device_resolved.values():
+                if isinstance(resolved, dict):
+                    alias_bound_ids.add(str(resolved.get("physical_compound_id") or ""))
+                    alias_bound_ids.add(str(resolved.get("compound_id") or ""))
+            alias_bound_ids.discard("")
+
+            result: dict[str, str] = {}
+            for cid, data in self.known_devices.items():
+                if cid in alias_bound_ids:
+                    continue
+                name = str(data.get("name") or cid).strip() or cid
+                result[name] = cid
+
+            for alias_name in self.alias_bindings.keys():
+                result[alias_name] = alias_name
+
+            return {k: v for k, v in result.items() if k and v}
+
+    def get_known_devices_with_names(self) -> dict[str, str]:
+        """Return {display_name: compound_id} for all known devices.
+
+        Used by the bind-alias dropdown so users see pretty names instead of
+        raw compound IDs.
+        """
+        with self._lock:
+            result: dict[str, str] = {}
+            for cid, data in self.known_devices.items():
+                name = str(data.get("name") or cid).strip() or cid
+                result[name] = cid
+            return result

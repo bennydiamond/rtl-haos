@@ -5,7 +5,6 @@ This module keeps all alias binding and legacy alias behavior self-contained.
 
 from __future__ import annotations
 
-import hashlib
 import re
 
 
@@ -36,11 +35,6 @@ class KnownDeviceAliases:
         return txt or "device"
 
     @staticmethod
-    def _short_suffix(seed: str, length: int = 4) -> str:
-        digest = hashlib.sha1(str(seed).encode("utf-8")).hexdigest()
-        return digest[: max(1, int(length or 4))]
-
-    @staticmethod
     def _model_from_compound_id(compound_id: str) -> str:
         cid = str(compound_id or "")
         if not cid.startswith("rtl433_"):
@@ -59,8 +53,7 @@ class KnownDeviceAliases:
 
     def _logical_compound_from_alias(self, alias_name: str) -> str:
         alias_slug = self._slugify(alias_name)
-        suffix = self._short_suffix(alias_name)
-        return f"rtl433_virtual_{alias_slug}_{suffix}"
+        return f"rtl433_virtual_{alias_slug}"
 
     def set_alias_bindings(self, alias_bindings: dict[str, dict] | None) -> None:
         self.alias_bindings = dict(alias_bindings) if isinstance(alias_bindings, dict) else {}
@@ -124,8 +117,7 @@ class KnownDeviceAliases:
 
             logical_compound_id = str(cand["logical_compound_id"])
             base_name = str(cand["virtual_name"])
-            display_suffix = self._short_suffix(logical_compound_id)
-            resolved_name = f"{base_name} ({display_suffix})"
+            resolved_name = base_name
 
             resolved = {
                 "alias": alias,

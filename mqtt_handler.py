@@ -193,6 +193,9 @@ class HomeNodeMQTT:
         self.selected_device_to_remove = "No device selected"
         self.selected_device_to_bind = "No device selected"
         self.alias_name_to_bind = ""
+        # Display-name → real-id lookup dicts; populated when selects are published.
+        self._remove_devices_lookup: dict[str, str] = {}
+        self._bind_devices_lookup: dict[str, str] = {}
 
         # Track one-time migrations (e.g., entity type/domain changes)
         self.migration_cleared = set()
@@ -797,8 +800,10 @@ class HomeNodeMQTT:
             if remove_device_command_topic and topic == remove_device_command_topic:
                 target = self.selected_device_to_remove
                 if target and target != "No device selected" and callable(self.remove_device_callback):
-                    print(f"[MQTT] Requesting removal of single device: {target}")
-                    self.remove_device_callback(target)
+                    # Map display name back to real token (compound_id or alias name)
+                    token = self._remove_devices_lookup.get(target, target)
+                    print(f"[MQTT] Requesting removal of single device: {token}")
+                    self.remove_device_callback(token)
                     self.selected_device_to_remove = "No device selected"
                     self.publish_known_devices_select()
                 return
@@ -830,8 +835,10 @@ class HomeNodeMQTT:
                     and target_alias
                     and callable(self.bind_alias_callback)
                 ):
-                    print(f"[MQTT] Requesting alias bind: alias='{target_alias}' device='{target_device}'")
-                    ok = bool(self.bind_alias_callback(target_alias, target_device))
+                    # Map display name back to real compound_id
+                    compound_id = self._bind_devices_lookup.get(target_device, target_device)
+                    print(f"[MQTT] Requesting alias bind: alias='{target_alias}' device='{compound_id}'")
+                    ok = bool(self.bind_alias_callback(target_alias, compound_id))
                     if ok:
                         self.selected_device_to_bind = "No device selected"
                         self.alias_name_to_bind = ""
@@ -950,11 +957,18 @@ class HomeNodeMQTT:
         unique_id = f"rtl_bridge_known_devices{config.ID_SUFFIX}"
 
         options = ["No device selected"]
+        lookup: dict[str, str] = {}
         if callable(self.get_known_devices_callback):
             try:
-                options += sorted(list(self.get_known_devices_callback()))
+                raw = self.get_known_devices_callback()
+                if isinstance(raw, dict):
+                    lookup = dict(raw)
+                    options += sorted(lookup.keys())
+                else:
+                    options += sorted(list(raw))
             except Exception:
                 pass
+        self._remove_devices_lookup = lookup
 
         if self.selected_device_to_remove not in options:
             self.selected_device_to_remove = "No device selected"
@@ -1013,12 +1027,19 @@ class HomeNodeMQTT:
         unique_id = f"rtl_bridge_bind_devices{config.ID_SUFFIX}"
 
         options = ["No device selected"]
+        lookup: dict[str, str] = {}
         get_devices_cb = self.get_bindable_devices_callback or self.get_known_devices_callback
         if callable(get_devices_cb):
             try:
-                options += sorted(list(get_devices_cb()))
+                raw = get_devices_cb()
+                if isinstance(raw, dict):
+                    lookup = dict(raw)
+                    options += sorted(lookup.keys())
+                else:
+                    options += sorted(list(raw))
             except Exception:
                 pass
+        self._bind_devices_lookup = lookup
 
         if self.selected_device_to_bind not in options:
             self.selected_device_to_bind = "No device selected"
