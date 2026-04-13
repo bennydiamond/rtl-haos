@@ -332,6 +332,24 @@ def test_on_message_bind_alias_button(monkeypatch):
     assert h.alias_name_to_bind == ""
     assert any(t == h.bind_alias_name_state_topic and p == "" and r is True for (t, p, r) in c.published)
 
+
+def test_bind_alias_button_uses_lookup_for_alias_display_name(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    h.get_bindable_devices_callback = lambda: {"cong_lateur_vertical": "rtl433_Acurite_4471"}
+    h._on_connect(c, None, None, rc=0)
+
+    called_with = []
+    h.bind_alias_callback = lambda alias, device: called_with.append((alias, device)) or True
+
+    msg_select = types.SimpleNamespace(topic=h.bind_devices_command_topic, payload=b"cong_lateur_vertical")
+    h._on_message(c, None, msg_select)
+
+    h.alias_name_to_bind = "new_alias"
+    msg_bind = types.SimpleNamespace(topic=h.bind_alias_command_topic, payload=b"PRESS")
+    h._on_message(c, None, msg_bind)
+
+    assert called_with == [("new_alias", "rtl433_Acurite_4471")]
+
 def test_on_message_before_connect_is_caught(monkeypatch, capsys):
     h, c = _make_handler(monkeypatch)
 
