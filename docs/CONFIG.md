@@ -66,6 +66,45 @@ Notes:
 - `/data` is persisted by Home Assistant for add-ons.
 - `/share` is also persistent and easier to inspect from the host/network share.
 
+### Alias bindings (`alias_bindings`)
+
+The known-devices JSON may include an `alias_bindings` object used to map a
+physical device ID to a stable logical alias identity.
+
+Example:
+
+```json
+{
+  "devices": {
+    "rtl433_Acurite_0002": {
+      "name": "Acurite 0002",
+      "topics": [
+        "homeassistant/sensor/rtl433_virtual_temp_sensor_ab12_temperature/config",
+        "home/rtl_devices/rtl433_virtual_temp_sensor_ab12/temperature"
+      ]
+    }
+  },
+  "alias_bindings": {
+    "temp_sensor": {
+      "device_compound_id": "rtl433_Acurite_0002",
+      "matches": 6,
+      "virtual_name": "Temp Sensor",
+      "logical_compound_id": "rtl433_virtual_temp_sensor_ab12"
+    }
+  }
+}
+```
+
+#### `matches` score
+
+`matches` is a conflict-resolution score for one-to-one alias/device mapping.
+
+- On each explicit alias bind/rebind, score increments by 1.
+- If conflicting assignments exist, higher `matches` wins.
+- If scores tie, deterministic ordering is used (alias name, then device id).
+
+Note: legacy `aliases` mapping is not used; `alias_bindings` is authoritative.
+
 ### Auto mode vs manual rtl_config
 
 - If `rtl_config` is empty (`rtl_config: []`), RTL-HAOS runs in **auto mode** and will start 1-3 radios depending on how many RTL-SDR dongles are detected.

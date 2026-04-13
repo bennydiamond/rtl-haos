@@ -202,14 +202,21 @@ def test_on_connect_success_subscribes_and_publishes_buttons(monkeypatch):
     assert hasattr(h, "restart_command_topic")
     assert hasattr(h, "discovery_command_topic")
     assert hasattr(h, "discovery_state_topic")
+    assert hasattr(h, "delete_alias_command_topic")
+    assert hasattr(h, "aliases_command_topic")
+    assert hasattr(h, "aliases_state_topic")
     assert h.nuke_command_topic in c.subscribed
     assert h.restart_command_topic in c.subscribed
     assert h.discovery_command_topic in c.subscribed
+    assert h.delete_alias_command_topic in c.subscribed
+    assert h.aliases_command_topic in c.subscribed
 
     # buttons published
     assert any(t.startswith("homeassistant/button/rtl_bridge_nuke_T/config") for (t, _, _) in c.published)
     assert any(t.startswith("homeassistant/button/rtl_bridge_restart_T/config") for (t, _, _) in c.published)
     assert any(t.startswith("homeassistant/switch/rtl_bridge_discovery_new_devices_T/config") for (t, _, _) in c.published)
+    assert any(t.startswith("homeassistant/button/rtl_bridge_delete_alias_T/config") for (t, _, _) in c.published)
+    assert any(t.startswith("homeassistant/select/rtl_bridge_aliases_T/config") for (t, _, _) in c.published)
     assert any(t == h.discovery_state_topic and p in {"ON", "OFF"} and r is True for (t, p, r) in c.published)
 
 
@@ -280,6 +287,33 @@ def test_on_message_remove_device_button(monkeypatch):
     assert called_with == ["rtl433_Test_123"]
     assert h.selected_device_to_remove == "No device selected"
     assert any(t == h.known_devices_state_topic and p == "No device selected" and r is True for (t, p, r) in c.published)
+
+
+def test_on_message_aliases_dropdown_select(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    h._on_connect(c, None, None, rc=0)
+
+    msg = types.SimpleNamespace(topic=h.aliases_command_topic, payload=b"temp_sensor")
+    h._on_message(c, None, msg)
+
+    assert h.selected_alias_to_delete == "temp_sensor"
+    assert any(t == h.aliases_state_topic and p == "temp_sensor" and r is True for (t, p, r) in c.published)
+
+
+def test_on_message_delete_alias_button(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    h._on_connect(c, None, None, rc=0)
+
+    called_with = []
+    h.delete_alias_callback = lambda alias: called_with.append(alias)
+
+    h.selected_alias_to_delete = "temp_sensor"
+    msg = types.SimpleNamespace(topic=h.delete_alias_command_topic, payload=b"PRESS")
+    h._on_message(c, None, msg)
+
+    assert called_with == ["temp_sensor"]
+    assert h.selected_alias_to_delete == "No alias selected"
+    assert any(t == h.aliases_state_topic and p == "No alias selected" and r is True for (t, p, r) in c.published)
 
 def test_on_message_before_connect_is_caught(monkeypatch, capsys):
     h, c = _make_handler(monkeypatch)
@@ -632,6 +666,55 @@ def test_send_sensor_async_coalesces_when_queue_full(monkeypatch):
     )
     assert status["reason"] == "queued_coalesced"
     assert len(h._async_coalesced) == 1
+
+
+def test_send_sensor_uses_resolved_logical_compound_id(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+
+    h.resolve_device_identity_callback = lambda physical_id, device_name: {
+        "compound_id": "rtl433_Acurite_4471",
+        "device_name": "Patio Sensor",
+    }
+
+    status = h.send_sensor(
+        "33:98",
+        "temperature",
+        72.5,
+        "Acurite 3398",
+        "Acurite",
+        is_rtl=False,
+    )
+
+    assert status["resolved_compound_id"] == "rtl433_Acurite_4471"
+
+    assert any(
+        t == "home/rtl_devices/rtl433_Acurite_4471/temperature" and p == "72.5" and r is True
+        for (t, p, r) in c.published
+    )
+
+    cfg_topic, cfg_payload = _last_published_json(
+        c,
+        "homeassistant/sensor/rtl433_Acurite_4471_temperature_T/config",
+    )
+    assert cfg_topic.startswith("homeassistant/sensor/rtl433_Acurite_4471_temperature_T/config")
+    assert cfg_payload["device"]["identifiers"] == ["rtl433_Acurite_4471"]
+    assert cfg_payload["device"]["name"] == "Patio Sensor"
+
+
+def test_alias_bound_device_does_not_publish_physical_identity_topics(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+
+    h.resolve_device_identity_callback = lambda _physical_id, _device_name: {
+        "compound_id": "rtl433_temp_sensor_ab12",
+        "device_name": "Temp Sensor",
+    }
+
+    h.send_sensor("33:98", "temperature", 72.5, "Acurite 3398", "Acurite", is_rtl=False)
+    h.send_sensor("33:98", "temperature", 73.0, "Acurite 3398", "Acurite", is_rtl=False)
+
+    # Discovery/state should only ever use alias identity, never raw physical id.
+    assert any("rtl433_temp_sensor_ab12" in t for (t, _p, _r) in c.published)
+    assert all("rtl433_Acurite_3398" not in t for (t, _p, _r) in c.published)
 
 
 def test_send_sensor_sync_returns_queue_full_when_bounded(monkeypatch):
