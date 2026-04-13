@@ -165,11 +165,20 @@ if __name__ == "__main__":
         thread_factory=threading.Thread,
     )
 
-    threading.Thread(
-        target=system_stats_loop,
-        args=(mqtt_handler, BASE_DEVICE_ID, BASE_MODEL_NAME),
-        daemon=True
-    ).start()
+    try:
+        thread = threading.Thread(
+            target=system_stats_loop,
+            args=(mqtt_handler, BASE_DEVICE_ID, BASE_MODEL_NAME),
+            name="system_stats_loop",
+            daemon=True,
+        )
+    except TypeError:
+        thread = threading.Thread(
+            target=system_stats_loop,
+            args=(mqtt_handler, BASE_DEVICE_ID, BASE_MODEL_NAME),
+            daemon=True,
+        )
+    thread.start()
 
     try:
         while True:

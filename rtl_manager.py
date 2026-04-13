@@ -11,6 +11,7 @@ import copy
 import sys
 import os
 import shlex
+import threading
 from pathlib import Path
 
 from datetime import datetime
@@ -20,7 +21,52 @@ import config
 from utils import clean_mac, calculate_dew_point
 
 # --- Process Tracking ---
-ACTIVE_PROCESSES = []
+class ProcessRegistry:
+    """Thread-safe registry for active rtl_433 subprocesses."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._items: list = []
+
+    def append(self, process) -> None:
+        with self._lock:
+            self._items.append(process)
+
+    def remove(self, process) -> None:
+        with self._lock:
+            self._items.remove(process)
+
+    def discard(self, process) -> bool:
+        with self._lock:
+            if process not in self._items:
+                return False
+            self._items.remove(process)
+            return True
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+
+    def __contains__(self, process) -> bool:
+        with self._lock:
+            return process in self._items
+
+    def __iter__(self):
+        with self._lock:
+            return iter(list(self._items))
+
+    def snapshot(self) -> list:
+        with self._lock:
+            return list(self._items)
+
+    def terminate_all_running(self) -> None:
+        with self._lock:
+            for process in list(self._items):
+                if process.poll() is None:
+                    process.terminate()
+
+
+ACTIVE_PROCESSES = ProcessRegistry()
 
 
 def _format_cmd(cmd: list[str]) -> str:
@@ -474,9 +520,7 @@ def _publish_radio_status(
 def trigger_radio_restart():
     """Terminates all running radios."""
     print("[RTL] User requested restart. Stopping processes...")
-    for p in list(ACTIVE_PROCESSES):
-        if p.poll() is None:
-            p.terminate()
+    ACTIVE_PROCESSES.terminate_all_running()
 
 
 def flatten(d, sep="_") -> dict:
@@ -986,8 +1030,7 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
 
         # Cleanup before restart
         if process:
-            if process in ACTIVE_PROCESSES:
-                ACTIVE_PROCESSES.remove(process)
+            ACTIVE_PROCESSES.discard(process)
 
             try:
                 process.terminate()

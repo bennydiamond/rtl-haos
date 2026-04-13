@@ -17,7 +17,8 @@ def test_discovery_payload_structure(mocker):
     
     # 3. Trigger a discovery
     # Sending "temperature_C" which maps to device_class: temperature
-    handler.send_sensor("device_123", "temperature_C", 25.5, "WeatherStn", "ModelX")
+    # send_sensor is async by default; use sync variant for deterministic payload assertions.
+    handler.send_sensor_sync("device_123", "temperature_C", 25.5, "WeatherStn", "ModelX")
     
     # 4. Find the config payload
     config_payload = None

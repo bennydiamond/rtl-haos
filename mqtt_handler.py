@@ -6,6 +6,7 @@ DESCRIPTION:
   - UPDATED: Removed legacy gas normalization. Now reports RAW meter values (ft3).
 """
 import json
+import queue
 import threading
 import sys
 import time
@@ -150,6 +151,28 @@ class HomeNodeMQTT:
         # Callbacks
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
+        self.client.on_disconnect = self._on_disconnect
+
+        # Connection/backpressure settings
+        self._mqtt_connected = False
+        self._mqtt_has_connected_once = False
+        self._app_queue_max = int(getattr(config, "MQTT_APP_QUEUE_MAX", 5000) or 5000)
+        self._app_queue_warn = int(getattr(config, "MQTT_APP_QUEUE_WARN", max(1000, int(self._app_queue_max * 0.8))) or max(1000, int(self._app_queue_max * 0.8)))
+        self._sync_enqueue_timeout_s = float(getattr(config, "MQTT_SYNC_ENQUEUE_TIMEOUT", 2.0) or 2.0)
+        self._drop_async_when_disconnected = bool(getattr(config, "MQTT_DROP_ASYNC_WHEN_DISCONNECTED", True))
+        self._coalesce_max = int(getattr(config, "MQTT_ASYNC_COALESCE_MAX", 2000) or 2000)
+        self._last_queue_warn_ts = 0.0
+        self._warn_interval_s = float(getattr(config, "MQTT_QUEUE_WARN_INTERVAL", 10.0) or 10.0)
+
+        # Configure paho internal buffering limits when available.
+        max_paho_queued = int(getattr(config, "MQTT_CLIENT_MAX_QUEUED_MESSAGES", 2000) or 2000)
+        max_paho_inflight = int(getattr(config, "MQTT_CLIENT_MAX_INFLIGHT_MESSAGES", 40) or 40)
+        set_max_queued = getattr(self.client, "max_queued_messages_set", None)
+        if callable(set_max_queued):
+            set_max_queued(max_paho_queued)
+        set_max_inflight = getattr(self.client, "max_inflight_messages_set", None)
+        if callable(set_max_inflight):
+            set_max_inflight(max_paho_inflight)
 
         self.discovery_published = set()
         self.last_sent_values = {}
@@ -173,11 +196,10 @@ class HomeNodeMQTT:
         # Keyed by clean_id (device base unique id).
         self._battery_state: dict[str, dict] = {}
         
-        self.discovery_lock = threading.Lock()
-        # Protects allow_new_device_discovery + discovered_device_ids
-        # so the toggle write (paho thread) and check-then-add in send_sensor
-        # (rtl_433 reader threads) are atomic with respect to each other.
-        self._allow_discovery_lock = threading.Lock()
+        # Shared state lock for discovery metadata, tracked devices, and
+        # discovery toggle state. RLock keeps helper composition simple.
+        self._state_lock = threading.RLock()
+        self.discovery_lock = self._state_lock
 
         # --- Utility meter inference cache (per-device) ---
         # Used to correctly classify generic fields like 'consumption_data' for ERT-SCM endpoints.
@@ -197,6 +219,16 @@ class HomeNodeMQTT:
         # Key: unique_id_with_suffix -> signature tuple
         self._discovery_sig = {}
 
+        # All send_sensor calls from external threads are routed through a queue
+        # so that the entirety of HomeNodeMQTT state runs on a single dedicated
+        # MQTT handler thread (started by start()).
+        self._publish_queue: queue.Queue = queue.Queue(maxsize=self._app_queue_max)
+        self._async_coalesced_lock = threading.Lock()
+        self._async_coalesced: dict[tuple, dict] = {}
+        self._publish_stop = threading.Event()
+        self._mqtt_thread: threading.Thread | None = None
+        self._worker_thread_id: int | None = None
+
 
         # --- Nuke Logic Variables ---
         self.nuke_counter = 0
@@ -204,6 +236,363 @@ class HomeNodeMQTT:
         self.NUKE_THRESHOLD = 5       
         self.NUKE_TIMEOUT = 5.0       
         self.is_nuking = False        
+
+    def _worker_send_sensor(self, item) -> None:
+        args = item.get("request", {})
+        result_queue = item.get("result_queue")
+        try:
+            status = self._send_sensor_impl(**args)
+        except Exception as e:
+            status = {
+                "accepted": False,
+                "published": False,
+                "reason": f"worker_exception: {type(e).__name__}",
+                "topics": [],
+            }
+            print(f"[MQTT] send_sensor worker error: {e}")
+
+        if result_queue is not None:
+            result_queue.put(status)
+
+    def _worker_publish_known_devices_select(self, _item) -> None:
+        try:
+            self.publish_known_devices_select()
+        except Exception as e:
+            print(f"[MQTT] publish_known_devices_select worker error: {e}")
+
+    def _worker_cleanup_device_topics(self, item) -> None:
+        try:
+            self.cleanup_device_discovered_topics(
+                item.get("topics_to_delete", []),
+                item.get("device_name_to_remove"),
+            )
+        except Exception as e:
+            print(f"[MQTT] cleanup_device_topics worker error: {e}")
+
+    def _worker_handle_message(self, item) -> None:
+        try:
+            self._on_message_impl(
+                item.get("client"),
+                item.get("userdata"),
+                item.get("topic", ""),
+                item.get("payload", b""),
+            )
+        except Exception as e:
+            print(f"[MQTT] handle_message worker error: {e}")
+
+    def _worker_stop_nuke_scan(self, _item) -> None:
+        try:
+            self._stop_nuke_scan_impl()
+        except Exception as e:
+            print(f"[MQTT] stop_nuke_scan worker error: {e}")
+
+    def _worker_on_connect_success(self, _item) -> None:
+        try:
+            self._on_connect_success_impl()
+        except Exception as e:
+            print(f"[MQTT] on_connect_success worker error: {e}")
+
+    def _worker_on_disconnect(self, _item) -> None:
+        try:
+            self._on_disconnect_impl()
+        except Exception as e:
+            print(f"[MQTT] on_disconnect worker error: {e}")
+
+    def _worker_mqtt_publish(self, item) -> None:
+        topic = item.get("topic")
+        payload = item.get("payload")
+        retain = bool(item.get("retain", False))
+        result_queue = item.get("result_queue")
+        ok = True
+        try:
+            self.client.publish(topic, payload, retain=retain)
+        except Exception as e:
+            ok = False
+            print(f"[MQTT] mqtt_publish worker error: {e}")
+        if result_queue is not None:
+            result_queue.put(ok)
+
+    def _worker_mqtt_subscribe(self, item) -> None:
+        topic = item.get("topic")
+        result_queue = item.get("result_queue")
+        ok = True
+        try:
+            self.client.subscribe(topic)
+        except Exception as e:
+            ok = False
+            print(f"[MQTT] mqtt_subscribe worker error: {e}")
+        if result_queue is not None:
+            result_queue.put(ok)
+
+    def _worker_mqtt_unsubscribe(self, item) -> None:
+        topic = item.get("topic")
+        result_queue = item.get("result_queue")
+        ok = True
+        try:
+            self.client.unsubscribe(topic)
+        except Exception as e:
+            ok = False
+            print(f"[MQTT] mqtt_unsubscribe worker error: {e}")
+        if result_queue is not None:
+            result_queue.put(ok)
+
+    def _worker_dispatch_item(self, item) -> bool:
+        handlers = {
+            "send_sensor": self._worker_send_sensor,
+            "publish_known_devices_select": self._worker_publish_known_devices_select,
+            "cleanup_device_topics": self._worker_cleanup_device_topics,
+            "handle_message": self._worker_handle_message,
+            "stop_nuke_scan": self._worker_stop_nuke_scan,
+            "on_connect_success": self._worker_on_connect_success,
+            "on_disconnect": self._worker_on_disconnect,
+            "mqtt_publish": self._worker_mqtt_publish,
+            "mqtt_subscribe": self._worker_mqtt_subscribe,
+            "mqtt_unsubscribe": self._worker_mqtt_unsubscribe,
+        }
+
+        if isinstance(item, dict):
+            op = item.get("op")
+            handler = handlers.get(op)
+            if handler is not None:
+                handler(item)
+                return True
+
+        # Backward compatibility for any legacy queue tuples in tests.
+        if isinstance(item, tuple) and len(item) == 2:
+            args, result_queue = item
+            self._worker_send_sensor({"request": args, "result_queue": result_queue})
+            return True
+
+        return False
+
+    def _mqtt_run_loop(self) -> None:
+        """Processes the internal work queue.
+
+        This is the body of the dedicated MQTT handler thread started by
+        start().  All send_sensor calls from other threads are serialised
+        here, ensuring no concurrent mutation of HomeNodeMQTT state.
+        """
+        self._worker_thread_id = threading.get_ident()
+        try:
+            while not self._publish_stop.is_set():
+                with self._async_coalesced_lock:
+                    if self._async_coalesced:
+                        _k, coalesced_args = self._async_coalesced.popitem()
+                    else:
+                        coalesced_args = None
+
+                if coalesced_args is not None:
+                    try:
+                        self._send_sensor_impl(**coalesced_args)
+                    except Exception as e:
+                        print(f"[MQTT] send_sensor worker error (coalesced): {e}")
+                    continue
+
+                try:
+                    item = self._publish_queue.get(timeout=0.25)
+                except queue.Empty:
+                    continue
+
+                if item is None:
+                    break
+
+                self._worker_dispatch_item(item)
+        finally:
+            self._worker_thread_id = None
+
+    def _make_async_key(self, sensor_id, field, device_name, device_model, is_rtl, friendly_name):
+        return (
+            str(sensor_id),
+            str(field),
+            str(device_name),
+            str(device_model),
+            bool(is_rtl),
+            str(friendly_name) if friendly_name is not None else None,
+        )
+
+    def _warn_queue_depth(self) -> None:
+        try:
+            q_depth = self._publish_queue.qsize()
+        except Exception:
+            q_depth = -1
+        with self._async_coalesced_lock:
+            coalesced_depth = len(self._async_coalesced)
+
+        if q_depth >= self._app_queue_warn or coalesced_depth >= int(self._coalesce_max * 0.8):
+            now = time.time()
+            if (now - self._last_queue_warn_ts) >= self._warn_interval_s:
+                print(
+                    f"[MQTT] WARNING: app queue pressure: queue={q_depth}/{self._app_queue_max}, "
+                    f"coalesced={coalesced_depth}/{self._coalesce_max}, connected={self._mqtt_connected}"
+                )
+                self._last_queue_warn_ts = now
+
+    def _track_device(self, device_name: str) -> None:
+        with self._state_lock:
+            prev_count = len(self.tracked_devices)
+            self.tracked_devices.add(device_name)
+            new_count = len(self.tracked_devices)
+        if new_count != prev_count:
+            self.device_count_channel.push(new_count)
+
+    def _untrack_device(self, device_name: str) -> None:
+        with self._state_lock:
+            if device_name not in self.tracked_devices:
+                return
+            self.tracked_devices.remove(device_name)
+            new_count = len(self.tracked_devices)
+        self.device_count_channel.push(new_count)
+
+    def _reset_tracked_devices(self) -> None:
+        with self._state_lock:
+            self.tracked_devices.clear()
+        self.device_count_channel.push(0)
+
+    def _set_discovery_enabled(self, enabled: bool) -> None:
+        with self._state_lock:
+            self.allow_new_device_discovery = bool(enabled)
+
+    def _clear_discovery_entries(self, unique_ids) -> None:
+        with self.discovery_lock:
+            for unique_id in unique_ids:
+                self.discovery_published.discard(unique_id)
+                self._discovery_sig.pop(unique_id, None)
+                self.last_sent_values.pop(unique_id, None)
+
+    def _reset_discovery_state(self) -> None:
+        with self.discovery_lock:
+            self.discovery_published.clear()
+            self.last_sent_values.clear()
+            self._discovery_sig.clear()
+
+    def _discard_discovery_published(self, unique_id: str) -> None:
+        with self.discovery_lock:
+            self.discovery_published.discard(unique_id)
+
+    def _get_last_sent_value(self, unique_id: str):
+        with self.discovery_lock:
+            return self.last_sent_values.get(unique_id)
+
+    def _set_last_sent_value(self, unique_id: str, value) -> None:
+        with self.discovery_lock:
+            self.last_sent_values[unique_id] = value
+
+    def _enqueue_mqtt_io(self, item: dict, *, wait: bool = False) -> bool:
+        """Run MQTT client I/O on the worker when possible."""
+        current_tid = threading.get_ident()
+        if self._worker_thread_id is None or current_tid == self._worker_thread_id:
+            op = item.get("op")
+            if op == "mqtt_publish":
+                self.client.publish(item.get("topic"), item.get("payload"), retain=bool(item.get("retain", False)))
+                return True
+            if op == "mqtt_subscribe":
+                self.client.subscribe(item.get("topic"))
+                return True
+            if op == "mqtt_unsubscribe":
+                self.client.unsubscribe(item.get("topic"))
+                return True
+            return False
+
+        result_queue = queue.Queue() if wait else None
+        request = dict(item)
+        if result_queue is not None:
+            request["result_queue"] = result_queue
+
+        try:
+            self._publish_queue.put(request, timeout=self._sync_enqueue_timeout_s)
+            self._warn_queue_depth()
+        except queue.Full:
+            self._warn_queue_depth()
+            return False
+
+        if result_queue is None:
+            return True
+        try:
+            return bool(result_queue.get(timeout=5.0))
+        except queue.Empty:
+            return False
+
+    def _client_publish(self, topic: str, payload, *, retain: bool = False, wait: bool = False) -> bool:
+        return self._enqueue_mqtt_io(
+            {
+                "op": "mqtt_publish",
+                "topic": topic,
+                "payload": payload,
+                "retain": retain,
+            },
+            wait=wait,
+        )
+
+    def _client_subscribe(self, topic: str, *, wait: bool = False) -> bool:
+        return self._enqueue_mqtt_io(
+            {
+                "op": "mqtt_subscribe",
+                "topic": topic,
+            },
+            wait=wait,
+        )
+
+    def _client_unsubscribe(self, topic: str, *, wait: bool = False) -> bool:
+        return self._enqueue_mqtt_io(
+            {
+                "op": "mqtt_unsubscribe",
+                "topic": topic,
+            },
+            wait=wait,
+        )
+
+    def _enqueue_worker_op(self, item: dict, *, run_inline_if_no_worker: bool = True) -> bool:
+        """Enqueue a control operation for the MQTT worker thread."""
+        current_tid = threading.get_ident()
+        if self._worker_thread_id is None:
+            return False
+        if current_tid == self._worker_thread_id:
+            return False
+
+        try:
+            self._publish_queue.put_nowait(item)
+            self._warn_queue_depth()
+            return True
+        except queue.Full:
+            self._warn_queue_depth()
+            return False
+
+    def _enqueue_named_worker_op(self, item: dict, *, inline_fallback=None, queue_full_fallback=None) -> bool:
+        """Enqueue a named worker op with explicit inline and queue-full fallback behavior."""
+        current_tid = threading.get_ident()
+        if self._worker_thread_id is None or current_tid == self._worker_thread_id:
+            if callable(inline_fallback):
+                inline_fallback()
+            return False
+
+        try:
+            self._publish_queue.put_nowait(item)
+            self._warn_queue_depth()
+            return True
+        except queue.Full:
+            self._warn_queue_depth()
+            if callable(queue_full_fallback):
+                queue_full_fallback()
+            return False
+
+    def queue_publish_known_devices_select(self) -> None:
+        """Schedule known-devices select refresh on the MQTT worker thread."""
+        self._enqueue_named_worker_op(
+            {"op": "publish_known_devices_select"},
+            inline_fallback=self.publish_known_devices_select,
+        )
+
+    def queue_cleanup_device_discovered_topics(self, topics_to_delete: list[str], device_name_to_remove: str) -> None:
+        """Schedule topic cleanup on the MQTT worker thread."""
+        self._enqueue_named_worker_op(
+            {
+                "op": "cleanup_device_topics",
+                "topics_to_delete": topics_to_delete,
+                "device_name_to_remove": device_name_to_remove,
+            },
+            inline_fallback=lambda: self.cleanup_device_discovered_topics(topics_to_delete, device_name_to_remove),
+            queue_full_fallback=lambda: self.cleanup_device_discovered_topics(topics_to_delete, device_name_to_remove),
+        )
 
     def _utility_meta_override(self, compound_id, field):
         """Return (unit, device_class, icon, friendly_name) for utility meter readings, or None."""
@@ -277,64 +666,97 @@ class HomeNodeMQTT:
             if cid != compound_id:
                 continue
             # Use is_rtl=False so we only publish if it actually changes.
-            self.send_sensor(clean_id, field, raw_value, device_name, device_model, is_rtl=False)
+            self.send_sensor_async(clean_id, field, raw_value, device_name, device_model, is_rtl=False)
 
+
+    def _on_connect_success_impl(self):
+        self._mqtt_connected = True
+        self._mqtt_has_connected_once = True
+        self._client_publish(self.TOPIC_AVAILABILITY, "online", retain=True)
+        print("[MQTT] Connected Successfully.")
+
+        # 1. Subscribe to Nuke Command
+        self.nuke_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/nuke/set"
+        self._client_subscribe(self.nuke_command_topic)
+
+        # 2. Subscribe to Restart Command
+        self.restart_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/restart/set"
+        self._client_subscribe(self.restart_command_topic)
+
+        # 3. Subscribe to Discovery Toggle Command
+        self.discovery_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/discovery_new_devices/set"
+        self.discovery_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/discovery_new_devices/state"
+        self._client_subscribe(self.discovery_command_topic)
+
+        # 5. Subscribe to Single Device Remove Commands
+        self.remove_device_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/remove_device/set"
+        self.known_devices_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/set"
+        self.known_devices_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/state"
+        self._client_subscribe(self.remove_device_command_topic)
+        self._client_subscribe(self.known_devices_command_topic)
+
+        # 4. Publish host control entities
+        self._publish_nuke_button()
+        self._publish_restart_button()
+        self._publish_discovery_toggle_switch()
+        self._publish_discovery_toggle_state()
+        self._publish_remove_device_button()
+        self.queue_publish_known_devices_select()
 
     def _on_connect(self, c, u, f, rc, p=None):
         if rc == 0:
-            c.publish(self.TOPIC_AVAILABILITY, "online", retain=True)
-            print("[MQTT] Connected Successfully.")
-            
-            # 1. Subscribe to Nuke Command
-            self.nuke_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/nuke/set"
-            c.subscribe(self.nuke_command_topic)
-            
-            # 2. Subscribe to Restart Command
-            self.restart_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/restart/set"
-            c.subscribe(self.restart_command_topic)
-
-            # 3. Subscribe to Discovery Toggle Command
-            self.discovery_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/discovery_new_devices/set"
-            self.discovery_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/discovery_new_devices/state"
-            c.subscribe(self.discovery_command_topic)
-            
-            # 5. Subscribe to Single Device Remove Commands
-            self.remove_device_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/remove_device/set"
-            self.known_devices_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/set"
-            self.known_devices_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/state"
-            c.subscribe(self.remove_device_command_topic)
-            c.subscribe(self.known_devices_command_topic)
-
-            # 4. Publish host control entities
-            self._publish_nuke_button()
-            self._publish_restart_button()
-            self._publish_discovery_toggle_switch()
-            self._publish_discovery_toggle_state()
-            self._publish_remove_device_button()
-            self.publish_known_devices_select()
+            queued = self._enqueue_worker_op({"op": "on_connect_success"}, run_inline_if_no_worker=True)
+            if queued:
+                return
+            self._on_connect_success_impl()
         else:
+            self._mqtt_connected = False
             print(f"[MQTT] Connection Failed! Code: {rc}")
 
+    def _on_disconnect_impl(self):
+        self._mqtt_connected = False
+
+    def _on_disconnect(self, client, userdata, rc, properties=None):
+        queued = self._enqueue_worker_op({"op": "on_disconnect"}, run_inline_if_no_worker=True)
+        if queued:
+            return
+        self._on_disconnect_impl()
+
     def _on_message(self, client, userdata, msg):
+        queued = self._enqueue_worker_op(
+            {
+                "op": "handle_message",
+                "client": client,
+                "userdata": userdata,
+                "topic": msg.topic,
+                "payload": msg.payload,
+            },
+            run_inline_if_no_worker=True,
+        )
+        if queued:
+            return
+
+        self._on_message_impl(client, userdata, msg.topic, msg.payload)
+
+    def _on_message_impl(self, client, userdata, topic, payload):
         """Handles incoming commands AND Nuke scanning."""
         try:
             # 1. Handle Nuke Button Press
-            if msg.topic == self.nuke_command_topic:
+            if topic == self.nuke_command_topic:
                 self._handle_nuke_press()
                 return
 
             # 2. Handle Restart Button Press
-            if msg.topic == self.restart_command_topic:
+            if topic == self.restart_command_topic:
                 trigger_radio_restart()
                 return
 
             # 3. Handle Discovery Toggle Switch
             discovery_command_topic = getattr(self, "discovery_command_topic", None)
-            if discovery_command_topic and msg.topic == discovery_command_topic:
-                requested = _parse_boolish(msg.payload.decode("utf-8") if isinstance(msg.payload, (bytes, bytearray)) else msg.payload)
+            if discovery_command_topic and topic == discovery_command_topic:
+                requested = _parse_boolish(payload.decode("utf-8") if isinstance(payload, (bytes, bytearray)) else payload)
                 if requested is not None:
-                    with self._allow_discovery_lock:
-                        self.allow_new_device_discovery = requested
+                    self._set_discovery_enabled(requested)
                     state_txt = "ON" if requested else "OFF"
 
                     # Publish state immediately so HA UI reflects the change now.
@@ -345,15 +767,15 @@ class HomeNodeMQTT:
 
             # 5. Handle Known Devices Dropdown
             known_devices_command_topic = getattr(self, "known_devices_command_topic", None)
-            if known_devices_command_topic and msg.topic == known_devices_command_topic:
-                selected = msg.payload.decode("utf-8") if isinstance(msg.payload, (bytes, bytearray)) else str(msg.payload)
+            if known_devices_command_topic and topic == known_devices_command_topic:
+                selected = payload.decode("utf-8") if isinstance(payload, (bytes, bytearray)) else str(payload)
                 self.selected_device_to_remove = selected
-                self.client.publish(self.known_devices_state_topic, selected, retain=True)
+                self._client_publish(self.known_devices_state_topic, selected, retain=True)
                 return
 
             # 6. Handle Remove Single Device Button
             remove_device_command_topic = getattr(self, "remove_device_command_topic", None)
-            if remove_device_command_topic and msg.topic == remove_device_command_topic:
+            if remove_device_command_topic and topic == remove_device_command_topic:
                 target = self.selected_device_to_remove
                 if target and target != "No device selected" and callable(self.remove_device_callback):
                     print(f"[MQTT] Requesting removal of single device: {target}")
@@ -364,10 +786,10 @@ class HomeNodeMQTT:
 
             # 4. Handle Nuke Scanning (Search & Destroy)
             if self.is_nuking:
-                if not msg.payload: return
+                if not payload: return
 
                 try:
-                    payload_str = msg.payload.decode("utf-8")
+                    payload_str = payload.decode("utf-8")
                     data = json.loads(payload_str)
                     
                     # Check Manufacturer Signature
@@ -376,11 +798,11 @@ class HomeNodeMQTT:
 
                     if "rtl-haos" in manufacturer:
                         # SAFETY: Don't delete the buttons!
-                        if "nuke" in msg.topic or "rtl_bridge_nuke" in str(msg.topic): return
-                        if "restart" in msg.topic or "rtl_bridge_restart" in str(msg.topic): return
+                        if "nuke" in topic or "rtl_bridge_nuke" in str(topic): return
+                        if "restart" in topic or "rtl_bridge_restart" in str(topic): return
 
-                        print(f"[NUKE] FOUND & DELETING: {msg.topic}")
-                        self.client.publish(msg.topic, "", retain=True)
+                        print(f"[NUKE] FOUND & DELETING: {topic}")
+                        self._client_publish(topic, "", retain=True)
                 except Exception:
                     pass
 
@@ -409,7 +831,7 @@ class HomeNodeMQTT:
         }
         
         config_topic = f"homeassistant/button/{unique_id}/config"
-        self.client.publish(config_topic, json.dumps(payload), retain=True)
+        self._client_publish(config_topic, json.dumps(payload), retain=True)
 
     def _publish_restart_button(self):
         """Creates the 'Restart Radios' button."""
@@ -433,7 +855,7 @@ class HomeNodeMQTT:
         }
         
         config_topic = f"homeassistant/button/{unique_id}/config"
-        self.client.publish(config_topic, json.dumps(payload), retain=True)
+        self._client_publish(config_topic, json.dumps(payload), retain=True)
 
     def _publish_discovery_toggle_switch(self):
         """Creates the 'Allow New Device Discovery' switch."""
@@ -460,11 +882,11 @@ class HomeNodeMQTT:
         }
 
         config_topic = f"homeassistant/switch/{unique_id}/config"
-        self.client.publish(config_topic, json.dumps(payload), retain=True)
+        self._client_publish(config_topic, json.dumps(payload), retain=True)
 
     def _publish_discovery_toggle_state(self):
-        state_txt = "ON" if self.allow_new_device_discovery else "OFF"
-        self.client.publish(self.discovery_state_topic, state_txt, retain=True)
+        state_txt = "ON" if self._get_discovery_enabled() else "OFF"
+        self._client_publish(self.discovery_state_topic, state_txt, retain=True)
 
     def publish_known_devices_select(self):
         """Creates the 'Known Devices' dropdown."""
@@ -500,10 +922,10 @@ class HomeNodeMQTT:
         }
 
         config_topic = f"homeassistant/select/{unique_id}/config"
-        self.client.publish(config_topic, json.dumps(payload), retain=True)
+        self._client_publish(config_topic, json.dumps(payload), retain=True)
         
         state_topic = getattr(self, "known_devices_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/known_devices/state")
-        self.client.publish(state_topic, self.selected_device_to_remove, retain=True)
+        self._client_publish(state_topic, self.selected_device_to_remove, retain=True)
 
     def _publish_remove_device_button(self):
         """Creates the 'Remove Selected Device' button."""
@@ -527,15 +949,15 @@ class HomeNodeMQTT:
         }
         
         config_topic = f"homeassistant/button/{unique_id}/config"
-        self.client.publish(config_topic, json.dumps(payload), retain=True)
+        self._client_publish(config_topic, json.dumps(payload), retain=True)
 
     def _get_discovery_enabled(self) -> bool:
         """Return current discovery toggle state.
         
         Called by KnownDeviceManager to query discovery setting.
-        Thread-safe snapshots via allow_discovery_lock.
+        Thread-safe snapshot via shared state lock.
         """
-        with self._allow_discovery_lock:
+        with self._state_lock:
             return self.allow_new_device_discovery
 
     def cleanup_device_discovered_topics(self, topics_to_delete: list[str], device_name_to_remove: str) -> None:
@@ -554,7 +976,7 @@ class HomeNodeMQTT:
                 continue
 
             # Publish empty retained message to delete the topic from the broker
-            self.client.publish(topic, "", retain=True)
+            self._client_publish(topic, "", retain=True)
 
             # Extract unique_id from config topics to clear internal caches
             if topic.startswith("homeassistant/") and topic.endswith("/config"):
@@ -563,17 +985,10 @@ class HomeNodeMQTT:
                     unique_ids_to_clear.add(parts[-2])
 
         try:
-            with self.discovery_lock:
-                for uid in unique_ids_to_clear:
-                    self.discovery_published.discard(uid)
-                    self._discovery_sig.pop(uid, None)
-                    self.last_sent_values.pop(uid, None)
+            self._clear_discovery_entries(unique_ids_to_clear)
 
             if device_name_to_remove:
-                with self._allow_discovery_lock:
-                    if device_name_to_remove in self.tracked_devices:
-                        self.tracked_devices.remove(device_name_to_remove)
-                        self.device_count_channel.push(len(self.tracked_devices))
+                self._untrack_device(device_name_to_remove)
 
             print(f"[MQTT] Cleared {len(topics_to_delete)} topics for device '{device_name_to_remove or 'Unknown'}'.")
         except Exception as e:
@@ -602,24 +1017,27 @@ class HomeNodeMQTT:
         print("[NUKE] DETONATED! Scanning MQTT for 'rtl-haos' devices...")
         print("!"*50 + "\n")
         self.is_nuking = True
-        self.client.subscribe("homeassistant/+/+/config")
-        threading.Timer(5.0, self._stop_nuke_scan).start()
+        self._client_subscribe("homeassistant/+/+/config")
+        threading.Timer(5.0, self._schedule_stop_nuke_scan).start()
+
+    def _schedule_stop_nuke_scan(self):
+        queued = self._enqueue_worker_op({"op": "stop_nuke_scan"}, run_inline_if_no_worker=True)
+        if queued:
+            return
+        self._stop_nuke_scan_impl()
 
     def _stop_nuke_scan(self):
+        # Backward-compatible alias for tests and direct calls.
+        self._stop_nuke_scan_impl()
+
+    def _stop_nuke_scan_impl(self):
         """Stops the scanning process and resets state."""
         self.is_nuking = False
-        self.client.unsubscribe("homeassistant/+/+/config")
+        self._client_unsubscribe("homeassistant/+/+/config")
         
-        with self.discovery_lock:
-            self.discovery_published.clear()
-            self.last_sent_values.clear()
-            self.tracked_devices.clear()
-            # Also clear discovery signatures so retained config is re-published
-            # even when the metadata would otherwise look "unchanged".
-            self._discovery_sig.clear()
+        self._reset_discovery_state()
 
-        # Notify device_count_loop that count is now 0.
-        self.device_count_channel.push(0)
+        self._reset_tracked_devices()
 
         if callable(self.on_nuke_callback):
             try:
@@ -628,7 +1046,7 @@ class HomeNodeMQTT:
                 print(f"[MQTT] Error in nuke callback: {e}")
 
         print("[NUKE] Scan Complete. All identified entities removed.")
-        self.client.publish(self.TOPIC_AVAILABILITY, "online", retain=True)
+        self._client_publish(self.TOPIC_AVAILABILITY, "online", retain=True)
         self._publish_nuke_button()
         self._publish_restart_button()
         self._publish_discovery_toggle_switch()
@@ -638,16 +1056,48 @@ class HomeNodeMQTT:
         print("[NUKE] Host Entities restored.")
 
     def start(self):
+        # Start the single MQTT handler thread that owns all HomeNodeMQTT state.
+        self._publish_stop.clear()
+        self._mqtt_thread = threading.Thread(
+            target=self._mqtt_run_loop,
+            name="mqtt-handler",
+            daemon=True,
+        )
+        self._mqtt_thread.start()
+
         print(f"[STARTUP] Connecting to MQTT Broker at {config.MQTT_SETTINGS['host']}...")
         try:
             self.client.connect(config.MQTT_SETTINGS["host"], config.MQTT_SETTINGS["port"])
             self.client.loop_start()
         except Exception as e:
             print(f"[CRITICAL] MQTT Connect Failed: {e}")
+            self._publish_stop.set()
+            try:
+                self._publish_queue.put_nowait(None)
+            except Exception:
+                pass
+            join = getattr(self._mqtt_thread, "join", None)
+            if callable(join):
+                join(timeout=2.0)
+            self._mqtt_thread = None
             sys.exit(1)
 
     def stop(self):
-        self.client.publish(self.TOPIC_AVAILABILITY, "offline", retain=True)
+        self._publish_stop.set()
+        is_alive = getattr(self._mqtt_thread, "is_alive", None)
+        should_join = bool(self._mqtt_thread) and (not callable(is_alive) or is_alive())
+        if should_join:
+            try:
+                self._publish_queue.put_nowait(None)  # unblock queue.get()
+            except queue.Full:
+                pass
+            join = getattr(self._mqtt_thread, "join", None)
+            if callable(join):
+                join(timeout=2.0)
+        self._mqtt_thread = None
+        with self._async_coalesced_lock:
+            self._async_coalesced.clear()
+        self._client_publish(self.TOPIC_AVAILABILITY, "offline", retain=True, wait=True)
         self.client.loop_stop()
         self.client.disconnect()
 
@@ -769,12 +1219,179 @@ class HomeNodeMQTT:
                 return False, []
 
             config_topic = f"homeassistant/{domain}/{unique_id}/config"
-            self.client.publish(config_topic, json.dumps(payload), retain=True)
+            self._client_publish(config_topic, json.dumps(payload), retain=True)
             self.discovery_published.add(unique_id)
             self._discovery_sig[unique_id] = sig
             return True, [config_topic, state_topic]
 
     def send_sensor(
+        self,
+        sensor_id,
+        field,
+        value,
+        device_name,
+        device_model,
+        is_rtl=True,
+        friendly_name=None,
+    ):
+        """Async sensor send entrypoint.
+
+        This method only confirms enqueuing when called from non-MQTT threads.
+        Use send_sensor_sync when the caller needs discovery topics/reply status.
+        """
+        return self.send_sensor_async(
+            sensor_id,
+            field,
+            value,
+            device_name,
+            device_model,
+            is_rtl=is_rtl,
+            friendly_name=friendly_name,
+        )
+
+    def send_sensor_async(
+        self,
+        sensor_id,
+        field,
+        value,
+        device_name,
+        device_model,
+        is_rtl=True,
+        friendly_name=None,
+    ):
+        # If the MQTT handler thread is not running (e.g. unit tests that never
+        # call start()) or this call is already on the handler thread (reentrant
+        # path, e.g. _refresh_utility_entities_for_device), run inline to avoid
+        # deadlock on the response queue.
+        current_tid = threading.get_ident()
+        if self._worker_thread_id is None or current_tid == self._worker_thread_id:
+            return self._send_sensor_impl(
+                sensor_id,
+                field,
+                value,
+                device_name,
+                device_model,
+                is_rtl=is_rtl,
+                friendly_name=friendly_name,
+            )
+
+        if (
+            self._drop_async_when_disconnected
+            and self._mqtt_has_connected_once
+            and not self._mqtt_connected
+        ):
+            return {
+                "accepted": False,
+                "published": False,
+                "reason": "dropped_disconnected",
+                "topics": [],
+            }
+
+        request = {
+            "sensor_id": sensor_id,
+            "field": field,
+            "value": value,
+            "device_name": device_name,
+            "device_model": device_model,
+            "is_rtl": is_rtl,
+            "friendly_name": friendly_name,
+        }
+        try:
+            self._publish_queue.put_nowait({"op": "send_sensor", "request": request, "result_queue": None})
+            self._warn_queue_depth()
+            return {
+                "accepted": True,
+                "published": False,
+                "reason": "queued",
+                "topics": [],
+            }
+        except queue.Full:
+            key = self._make_async_key(sensor_id, field, device_name, device_model, is_rtl, friendly_name)
+            with self._async_coalesced_lock:
+                self._async_coalesced[key] = request
+                if len(self._async_coalesced) > self._coalesce_max:
+                    # Drop one older coalesced key to enforce bounded memory.
+                    drop_key = next(iter(self._async_coalesced))
+                    if drop_key != key:
+                        self._async_coalesced.pop(drop_key, None)
+            self._warn_queue_depth()
+            return {
+                "accepted": True,
+                "published": False,
+                "reason": "queued_coalesced",
+                "topics": [],
+            }
+
+    def send_sensor_sync(
+        self,
+        sensor_id,
+        field,
+        value,
+        device_name,
+        device_model,
+        is_rtl=True,
+        friendly_name=None,
+    ):
+        """Sync sensor send entrypoint.
+
+        Enqueues work and waits for the MQTT worker result when called from
+        non-MQTT threads.
+        """
+        current_tid = threading.get_ident()
+        if self._worker_thread_id is None or current_tid == self._worker_thread_id:
+            return self._send_sensor_impl(
+                sensor_id,
+                field,
+                value,
+                device_name,
+                device_model,
+                is_rtl=is_rtl,
+                friendly_name=friendly_name,
+            )
+
+        result_queue: queue.Queue = queue.Queue()
+        # Defensive queue sync: drain any stale response before enqueueing.
+        # (A fresh queue should be empty, but this prevents accidental reuse bugs.)
+        while True:
+            try:
+                result_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        request = {
+            "sensor_id": sensor_id,
+            "field": field,
+            "value": value,
+            "device_name": device_name,
+            "device_model": device_model,
+            "is_rtl": is_rtl,
+            "friendly_name": friendly_name,
+        }
+        try:
+            self._publish_queue.put(
+                {"op": "send_sensor", "request": request, "result_queue": result_queue},
+                timeout=self._sync_enqueue_timeout_s,
+            )
+        except queue.Full:
+            self._warn_queue_depth()
+            return {
+                "accepted": False,
+                "published": False,
+                "reason": "queue_full",
+                "topics": [],
+            }
+
+        try:
+            return result_queue.get(timeout=5.0)
+        except queue.Empty:
+            return {
+                "accepted": False,
+                "published": False,
+                "reason": "send_timeout",
+                "topics": [],
+            }
+
+    def _send_sensor_impl(
         self,
         sensor_id,
         field,
@@ -797,21 +1414,7 @@ class HomeNodeMQTT:
 
         clean_id = clean_mac(sensor_id) 
 
-        # Host/bridge entities should always publish.
-        is_host_entity = str(device_model) == str(config.BRIDGE_NAME)
-        
-        # Non-host entities: track device count and check if known
-        if not is_host_entity:
-            # Track device as active this runtime
-            prev_tracked_count = len(self.tracked_devices)
-            self.tracked_devices.add(device_name)
-            if len(self.tracked_devices) != prev_tracked_count:
-                self.device_count_channel.push(len(self.tracked_devices))
-        else:
-            prev_tracked_count = len(self.tracked_devices)
-            self.tracked_devices.add(device_name)
-            if len(self.tracked_devices) != prev_tracked_count:
-                self.device_count_channel.push(len(self.tracked_devices))
+        self._track_device(device_name)
 
         status["accepted"] = True
 
@@ -924,9 +1527,8 @@ class HomeNodeMQTT:
             unique_id_v2 = f"{unique_id}{config.ID_SUFFIX}"
             if unique_id_v2 not in self.migration_cleared:
                 old_sensor_config = f"homeassistant/sensor/{unique_id_v2}/config"
-                self.client.publish(old_sensor_config, "", retain=True)
-                with self.discovery_lock:
-                    self.discovery_published.discard(unique_id_v2)
+                self._client_publish(old_sensor_config, "", retain=True)
+                self._discard_discovery_published(unique_id_v2)
                 self.migration_cleared.add(unique_id_v2)
 
             if friendly_name is None:
@@ -949,11 +1551,11 @@ class HomeNodeMQTT:
             status["topics"].extend(topics)
 
         unique_id_v2 = f"{unique_id}{config.ID_SUFFIX}"
-        value_changed = (self.last_sent_values.get(unique_id_v2) != out_value) or bool(discovery_published_now)
+        value_changed = (self._get_last_sent_value(unique_id_v2) != out_value) or bool(discovery_published_now)
 
         if value_changed or is_rtl:
-            self.client.publish(state_topic, str(out_value), retain=True)
-            self.last_sent_values[unique_id_v2] = out_value
+            self._client_publish(state_topic, str(out_value), retain=True)
+            self._set_last_sent_value(unique_id_v2, out_value)
             status["published"] = True
 
             if value_changed:

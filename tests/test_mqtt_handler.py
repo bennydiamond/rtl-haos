@@ -37,6 +37,7 @@ def test_unknown_field_fallback(mocker):
     
     # 2. Send a completely made-up field
     handler.send_sensor("device_x", "alien_radiation", 999, "UFO", "Saucer")
+    handler.stop()
     
     # 3. Find the discovery payload
     payload = None
@@ -62,6 +63,7 @@ def test_mqtt_discovery_payload(mocker, mock_config):
     
     # Simulate sending a sensor
     handler.send_sensor("device123", "temperature", 75.0, "My Weather", "ModelZ")
+    handler.stop()
     
     # Verify Publish Calls
     publish_calls = mock_client_instance.publish.call_args_list

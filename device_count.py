@@ -4,41 +4,41 @@ DESCRIPTION:
   Encapsulates the device-count publishing channel.
 
   DeviceCountChannel owns:
-    - A depth-1 Queue used to pass the latest device count from the main
-      threads (via push()) to the monitor thread (via loop()).
-    - push(count): flush any stale value then insert the new one.
-    - loop(device_id, model_name): thread target that blocks on the queue
-      and publishes sys_device_count via the bound mqtt_handler.
+    - A lock-protected latest-count slot shared by producers.
+    - An Event used to wake the consumer thread immediately on updates.
+    - push(count): overwrite the latest count and signal the consumer.
+    - loop(device_id, model_name): thread target that publishes the latest
+      sys_device_count immediately on change and every 60 s as a heartbeat.
 """
-import queue
 import threading
-import time
 
 
 class DeviceCountChannel:
-    """Depth-1 channel for propagating device count to the monitor thread.
+    """Latest-value channel for propagating device count to the monitor thread.
 
     The producer (main/MQTT thread) calls push() to deliver the latest count.
-    The consumer thread runs loop() which blocks until a new value arrives or
+    The consumer thread runs loop() which blocks until an update arrives or
     60 s elapses (heartbeat), then publishes sys_device_count via mqtt_handler.
 
     Design guarantees:
-      - Queue depth never exceeds 1: push() flushes any stale entry first.
+      - Only the latest count is retained; older pending values are overwritten.
       - The monitor thread never reads tracked_devices directly, eliminating
         concurrent access to that shared set.
     """
 
     def __init__(self, mqtt_handler) -> None:
         self._mqtt = mqtt_handler
-        self._queue: queue.Queue = queue.Queue(maxsize=1)
+        self._count_lock = threading.Lock()
+        self._count_event = threading.Event()
+        self._count_last = 0
+        self._count_pending = False
 
     def push(self, count: int) -> None:
-        """Overwrite the queued count.  Thread-safe; may be called from any thread."""
-        try:
-            self._queue.get_nowait()
-        except queue.Empty:
-            pass
-        self._queue.put_nowait(count)
+        """Overwrite the latest count and wake the consumer thread."""
+        with self._count_lock:
+            self._count_last = int(count)
+            self._count_pending = True
+            self._count_event.set()
 
     def loop(self, device_id: str, model_name: str) -> None:
         """Thread target: publish sys_device_count on change or every 60 s."""
@@ -49,10 +49,12 @@ class DeviceCountChannel:
         while True:
             device_name = f"{model_name} ({device_id})"
 
-            try:
-                last_count = self._queue.get(timeout=60)
-            except queue.Empty:
-                pass  # 60 s heartbeat — re-publish last known count
+            signaled = self._count_event.wait(timeout=60)
+            with self._count_lock:
+                if signaled and self._count_pending:
+                    last_count = self._count_last
+                    self._count_pending = False
+                    self._count_event.clear()
 
             try:
                 self._mqtt.send_sensor(
@@ -72,6 +74,15 @@ class DeviceCountChannel:
         The optional thread_factory makes this test-friendly (callers can pass a
         patched threading.Thread).
         """
-        thread = thread_factory(target=self.loop, args=(device_id, model_name), daemon=True)
+        kwargs = {
+            "target": self.loop,
+            "args": (device_id, model_name),
+            "daemon": True,
+        }
+        # Use a stable, descriptive name in production for easier thread debugging.
+        if thread_factory is threading.Thread:
+            kwargs["name"] = "device_count_loop"
+
+        thread = thread_factory(**kwargs)
         thread.start()
         return thread
