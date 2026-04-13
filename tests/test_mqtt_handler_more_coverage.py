@@ -1,4 +1,5 @@
 import json
+import threading
 import types
 import pytest
 import mqtt_handler
@@ -48,6 +49,10 @@ class DummyClient:
         # callbacks (assigned by handler)
         self.on_connect = None
         self.on_message = None
+        self.on_disconnect = None
+
+        self.max_queued = None
+        self.max_inflight = None
 
     def username_pw_set(self, user, password):
         self.userpass = (user, password)
@@ -75,6 +80,12 @@ class DummyClient:
 
     def disconnect(self):
         self.disconnected = True
+
+    def max_queued_messages_set(self, n):
+        self.max_queued = n
+
+    def max_inflight_messages_set(self, n):
+        self.max_inflight = n
 
 
 class DummyTimer:
@@ -125,6 +136,57 @@ def _last_published_json(client, topic_prefix):
     assert matches, f"Expected publish to {topic_prefix}, got: {client.published}"
     t, payload, _retain = matches[-1]
     return t, json.loads(payload)
+
+
+def test_send_sensor_routes_through_mqtt_handler_thread(monkeypatch):
+    h, _c = _make_handler(monkeypatch)
+    h.start()
+
+    try:
+        worker_ran = threading.Event()
+        worker_tid = {"value": None}
+
+        def fake_impl(*args, **kwargs):
+            worker_tid["value"] = threading.get_ident()
+            worker_ran.set()
+            return {
+                "accepted": True,
+                "published": True,
+                "reason": "queued_ok",
+                "topics": [],
+            }
+
+        monkeypatch.setattr(h, "_send_sensor_impl", fake_impl)
+
+        status = h.send_sensor_sync(
+            "aa:bb:cc:dd:ee:ff",
+            "temp_c",
+            21,
+            "Dev",
+            "Bridge",
+            is_rtl=False,
+        )
+
+        assert status["reason"] == "queued_ok"
+        assert worker_ran.wait(timeout=1.0)
+        assert worker_tid["value"] is not None
+        # Must have executed on the mqtt-handler thread, not the calling thread.
+        assert worker_tid["value"] != threading.get_ident()
+
+        worker_ran.clear()
+        h._mqtt_connected = True
+        queued = h.send_sensor(
+            "aa:bb:cc:dd:ee:ff",
+            "temp_c",
+            22,
+            "Dev",
+            "Bridge",
+            is_rtl=False,
+        )
+        assert queued["reason"] == "queued"
+        assert worker_ran.wait(timeout=1.0)
+    finally:
+        h.stop()
 
 
 def test_on_connect_success_subscribes_and_publishes_buttons(monkeypatch):
@@ -531,3 +593,62 @@ def test_start_success_and_failure_and_stop(monkeypatch):
     c2.connect = boom_connect
     with pytest.raises(SystemExit):
         h2.start()
+
+
+def test_send_sensor_async_drops_while_disconnected(monkeypatch):
+    h, _c = _make_handler(monkeypatch)
+    h.start()
+    try:
+        h._mqtt_has_connected_once = True
+        h._mqtt_connected = False
+        status = h.send_sensor(
+            "aa:bb:cc:dd:ee:ff",
+            "temp_c",
+            20,
+            "Dev",
+            "Bridge",
+            is_rtl=False,
+        )
+        assert status["reason"] == "dropped_disconnected"
+        assert status["accepted"] is False
+    finally:
+        h.stop()
+
+
+def test_send_sensor_async_coalesces_when_queue_full(monkeypatch):
+    h, _c = _make_handler(monkeypatch)
+    h._worker_thread_id = -1  # force async enqueue path from this thread
+    h._mqtt_connected = True
+    h._publish_queue = mqtt_handler.queue.Queue(maxsize=1)
+    h._publish_queue.put_nowait(({"sensor_id": "x"}, None))
+
+    status = h.send_sensor(
+        "aa:bb:cc:dd:ee:ff",
+        "temp_c",
+        21,
+        "Dev",
+        "Bridge",
+        is_rtl=False,
+    )
+    assert status["reason"] == "queued_coalesced"
+    assert len(h._async_coalesced) == 1
+
+
+def test_send_sensor_sync_returns_queue_full_when_bounded(monkeypatch):
+    h, _c = _make_handler(monkeypatch)
+    h._worker_thread_id = -1  # force sync enqueue path
+    h._mqtt_connected = True
+    h._sync_enqueue_timeout_s = 0.01
+    h._publish_queue = mqtt_handler.queue.Queue(maxsize=1)
+    h._publish_queue.put_nowait(({"sensor_id": "x"}, None))
+
+    status = h.send_sensor_sync(
+        "aa:bb:cc:dd:ee:ff",
+        "temp_c",
+        22,
+        "Dev",
+        "Bridge",
+        is_rtl=False,
+    )
+    assert status["reason"] == "queue_full"
+    assert status["accepted"] is False

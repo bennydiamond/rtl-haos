@@ -26,6 +26,19 @@ class DataProcessor:
         self.buffer = {}
         self.lock = threading.Lock()
 
+    def _send_with_reply(self, clean_id, field, value, dev_name, model, is_rtl=True):
+        """Send via sync API when available; fallback for older test doubles."""
+        # Some tests pass a bare Mock() as mqtt_handler; getattr(mock, "send_sensor_sync")
+        # returns another Mock even when the real API doesn't exist. Prefer class/instance-declared
+        # methods to avoid silently calling a synthetic mock attribute.
+        has_declared_sync = hasattr(type(self.mqtt_handler), "send_sensor_sync") or (
+            "send_sensor_sync" in getattr(self.mqtt_handler, "__dict__", {})
+        )
+        send_sync = getattr(self.mqtt_handler, "send_sensor_sync", None) if has_declared_sync else None
+        if callable(send_sync):
+            return send_sync(clean_id, field, value, dev_name, model, is_rtl=is_rtl)
+        return self.mqtt_handler.send_sensor(clean_id, field, value, dev_name, model, is_rtl=is_rtl)
+
     # --- FIX 1: Add radio_freq to arguments ---
     def dispatch_reading(self, clean_id, field, value, dev_name, model, radio_name="Unknown", radio_freq="Unknown"):
         """
@@ -49,14 +62,7 @@ class DataProcessor:
         
         # 1. Immediate Dispatch (No Throttling)
         if interval <= 0:
-            status = self.mqtt_handler.send_sensor(
-                clean_id,
-                field,
-                value,
-                dev_name,
-                model,
-                is_rtl=True,
-            )
+            status = self._send_with_reply(clean_id, field, value, dev_name, model, is_rtl=True)
             
             # Save to JSON whenever new topics are created, even if the device was already known.
             if self.known_device_manager and status.get("topics"):
@@ -148,14 +154,7 @@ class DataProcessor:
                         if not self.known_device_manager.should_process_frame(compound_id):
                             continue
                     
-                    status = self.mqtt_handler.send_sensor(
-                        clean_id,
-                        field,
-                        final_val,
-                        dev_name,
-                        model,
-                        is_rtl=True,
-                    )
+                    status = self._send_with_reply(clean_id, field, final_val, dev_name, model, is_rtl=True)
                     
                     if self.known_device_manager and status.get("topics"):
                         self.known_device_manager.add_or_update_device(

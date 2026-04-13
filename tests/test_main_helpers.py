@@ -73,11 +73,26 @@ class DummyKnownDeviceManager:
     def __init__(self, *args, **kwargs):
         pass
 
+    def start_thread(self, *args, **kwargs):
+        pass
+
+    def stop_thread(self):
+        pass
+
     def clear_all_devices(self):
+        pass
+
+    def queue_clear_all_devices(self):
+        pass
+
+    def queue_add_or_update_device(self, compound_id, device_name, new_topics):
         pass
 
     def get_known_devices(self):
         return set()
 
     def remove_device(self, compound_id):
+        pass
+
+    def queue_remove_device(self, compound_id):
         pass

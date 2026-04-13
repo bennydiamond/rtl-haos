@@ -121,6 +121,27 @@ def check_dependencies():
         sys.exit(1)
 
 
+def _start_named_thread(target, *, args=(), name=None, daemon=True):
+    """Start a thread with a stable name when supported by the thread factory."""
+    kwargs = {
+        "target": target,
+        "args": args,
+        "daemon": daemon,
+    }
+    if name:
+        kwargs["name"] = name
+
+    try:
+        thread = threading.Thread(**kwargs)
+    except TypeError:
+        # Some test doubles don't accept the name kwarg.
+        kwargs.pop("name", None)
+        thread = threading.Thread(**kwargs)
+
+    thread.start()
+    return thread
+
+
 
 import config
 from mqtt_handler import HomeNodeMQTT
@@ -189,15 +210,27 @@ def main():
     mqtt_handler = HomeNodeMQTT(version=ver)
     mqtt_handler.start()
 
+    # Prefer queued callbacks when available; keep fallback for older test doubles.
+    mqtt_cleanup_cb = getattr(
+        mqtt_handler,
+        "queue_cleanup_device_discovered_topics",
+        mqtt_handler.cleanup_device_discovered_topics,
+    )
+    mqtt_update_select_cb = getattr(
+        mqtt_handler,
+        "queue_publish_known_devices_select",
+        mqtt_handler.publish_known_devices_select,
+    )
+
     # Create KnownDeviceManager with callbacks to mqtt_handler
     # Manager runs in processor thread context for thread safety
     known_device_manager = KnownDeviceManager(
         known_device_store=known_store,
         get_discovery_enabled_callback=mqtt_handler._get_discovery_enabled,
-        mqtt_cleanup_callback=mqtt_handler.cleanup_device_discovered_topics,
-        mqtt_update_select_callback=mqtt_handler.publish_known_devices_select,
+        mqtt_cleanup_callback=mqtt_cleanup_cb,
+        mqtt_update_select_callback=mqtt_update_select_cb,
     )
-    
+
     mqtt_handler.on_nuke_callback = known_device_manager.clear_all_devices
     mqtt_handler.get_known_devices_callback = known_device_manager.get_known_devices
     mqtt_handler.remove_device_callback = known_device_manager.remove_device
@@ -208,7 +241,11 @@ def main():
         mqtt_handler,
         known_device_manager=known_device_manager,
     )
-    threading.Thread(target=processor.start_throttle_loop, daemon=True).start()
+    _start_named_thread(
+        processor.start_throttle_loop,
+        name="start_throttle_loop",
+        daemon=True,
+    )
 
     sys_id = get_system_mac().replace(":", "").lower() 
     sys_model = config.BRIDGE_NAME
@@ -303,11 +340,12 @@ def main():
                 if target_id:
                      print(f"[STARTUP] Warning: Configured Serial {target_id} not found in scan. Driver may fail.")
 
-            threading.Thread(
-                target=rtl_loop,
+            _start_named_thread(
+                rtl_loop,
                 args=(radio, mqtt_handler, processor, sys_id, sys_model),
+                name="rtl_loop",
                 daemon=True,
-            ).start()
+            )
             time.sleep(5)
             
         if detected_devices:
@@ -544,11 +582,12 @@ def main():
                     )
 
 
-                    threading.Thread(
-                        target=rtl_loop,
+                    _start_named_thread(
+                        rtl_loop,
                         args=(r, mqtt_handler, processor, sys_id, sys_model),
+                        name="rtl_loop",
                         daemon=True,
-                    ).start()
+                    )
                     time.sleep(5)
 
                 if len(detected_devices) > len(radios):
@@ -587,11 +626,12 @@ def main():
                 if len(detected_devices) > 1:
                     print(f"[STARTUP] WARNING: [System] {len(detected_devices)-1} additional SDR(s) detected but ignored. Enable Auto Multi-Radio or configure rtl_config to use them.")
 
-                threading.Thread(
-                    target=rtl_loop,
+                _start_named_thread(
+                    rtl_loop,
                     args=(radio_setup, mqtt_handler, processor, sys_id, sys_model),
+                    name="rtl_loop",
                     daemon=True,
-                ).start()
+                )
            
         else:
             # --- UPDATED: Warning for Fallback Mode ---
@@ -617,18 +657,24 @@ def main():
             for w in warns:
                 print(f"[STARTUP] CONFIG WARNING: [Radio: RTL_auto] {w}")
 
-            threading.Thread(
-                target=rtl_loop,
+            _start_named_thread(
+                rtl_loop,
                 args=(auto_radio, mqtt_handler, processor, sys_id, sys_model),
+                name="rtl_loop",
                 daemon=True,
-            ).start()
+            )
 
     mqtt_handler.device_count_channel.start_thread(
         sys_id,
         sys_model,
         thread_factory=threading.Thread,
     )
-    threading.Thread(target=system_stats_loop, args=(mqtt_handler, sys_id, sys_model), daemon=True).start()
+    _start_named_thread(
+        system_stats_loop,
+        args=(mqtt_handler, sys_id, sys_model),
+        name="system_stats_loop",
+        daemon=True,
+    )
 
     try:
         while True: time.sleep(1)

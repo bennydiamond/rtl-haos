@@ -46,6 +46,19 @@ class KnownDeviceManager:
         # Protects known_device_ids mutations
         self._lock = threading.Lock()
 
+    def _save_known_devices_locked(self, error_context: str) -> bool:
+        """Persist current known_devices while the caller holds self._lock."""
+        try:
+            self.known_device_store.save_devices(self.known_devices)
+            return True
+        except Exception as e:
+            print(f"[KnownDeviceManager] Error persisting {error_context}: {e}")
+            return False
+
+    def _notify_select_update(self) -> None:
+        if self._mqtt_update_select:
+            self._mqtt_update_select()
+
     def get_discovery_enabled(self) -> bool:
         """Query mqtt_handler for current discovery toggle state."""
         try:
@@ -84,7 +97,6 @@ class KnownDeviceManager:
         if not compound_id or not new_topics:
             return
 
-        trigger_update = False
         with self._lock:
             device_data = self.known_devices.setdefault(compound_id, {})
             device_data["name"] = device_name
@@ -101,15 +113,11 @@ class KnownDeviceManager:
 
             device_data["topics"] = sorted(list(existing_topics))
 
-            try:
-                self.known_device_store.save_devices(self.known_devices)
-                trigger_update = True
-            except Exception as e:
-                print(f"[KnownDeviceManager] Error persisting discovery: {e}")
+            saved = self._save_known_devices_locked("discovery")
 
         # Trigger callback outside the lock to prevent deadlocks
-        if trigger_update and self._mqtt_update_select:
-            self._mqtt_update_select()
+        if saved:
+            self._notify_select_update()
 
     def remove_device(self, compound_id: str) -> None:
         """Remove a device from the known list.
@@ -121,7 +129,6 @@ class KnownDeviceManager:
         if not compound_id:
             return
 
-        trigger_update = False
         with self._lock:
             if compound_id not in self.known_devices:
                 return
@@ -130,18 +137,14 @@ class KnownDeviceManager:
             topics_to_delete = device_data.get("topics", [])
             device_name_to_remove = device_data.get("name")
 
-            try:
-                self.known_device_store.save_devices(self.known_devices)
-                trigger_update = True
-            except Exception as e:
-                print(f"[KnownDeviceManager] Error persisting removal: {e}")
+            saved = self._save_known_devices_locked("removal")
+            if not saved:
                 # Re-add on persist failure to maintain consistency
                 self.known_devices[compound_id] = device_data
                 return
 
         # Trigger callback outside the lock
-        if trigger_update and self._mqtt_update_select:
-            self._mqtt_update_select()
+        self._notify_select_update()
 
         # Tell mqtt_handler to cleanup retained topics
         try:
@@ -154,17 +157,12 @@ class KnownDeviceManager:
 
         Called when the Nuke mechanism is triggered.
         """
-        trigger_update = False
         with self._lock:
             self.known_devices.clear()
-            try:
-                self.known_device_store.save_devices(self.known_devices)
-                trigger_update = True
-            except Exception as e:
-                print(f"[KnownDeviceManager] Error persisting clear_all: {e}")
+            saved = self._save_known_devices_locked("clear_all")
 
-        if trigger_update and self._mqtt_update_select:
-            self._mqtt_update_select()
+        if saved:
+            self._notify_select_update()
 
     def get_known_devices(self) -> set[str]:
         """Return current set of known device compound IDs.

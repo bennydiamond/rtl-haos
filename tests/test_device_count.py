@@ -1,5 +1,4 @@
 """Tests for device_count.DeviceCountChannel."""
-import queue as _queue
 
 import pytest
 
@@ -7,7 +6,7 @@ from device_count import DeviceCountChannel
 
 
 # ---------------------------------------------------------------------------
-# push() — depth-1 queue behaviour
+# push() — latest-value slot behaviour
 # ---------------------------------------------------------------------------
 
 def test_push_delivers_value():
@@ -16,10 +15,12 @@ def test_push_delivers_value():
 
     ch = DeviceCountChannel(DummyMQTT())
     ch.push(5)
-    assert ch._queue.get_nowait() == 5
+    assert ch._count_last == 5
+    assert ch._count_pending is True
+    assert ch._count_event.is_set() is True
 
 
-def test_push_flushes_stale_value():
+def test_push_overwrites_stale_value():
     """A second push() before the consumer reads must replace the first value."""
     class DummyMQTT:
         def send_sensor(self, *a, **k): pass
@@ -28,18 +29,20 @@ def test_push_flushes_stale_value():
     ch.push(3)
     ch.push(7)  # must overwrite 3
 
-    assert ch._queue.get_nowait() == 7
-    assert ch._queue.empty(), "Queue must contain at most one item after push"
+    assert ch._count_last == 7
+    assert ch._count_pending is True
+    assert ch._count_event.is_set() is True
 
 
 def test_push_zero_after_nuke():
-    """push(0) must be accepted even when queue is empty (NUKE path)."""
+    """push(0) must be accepted even when no prior update exists (NUKE path)."""
     class DummyMQTT:
         def send_sensor(self, *a, **k): pass
 
     ch = DeviceCountChannel(DummyMQTT())
     ch.push(0)
-    assert ch._queue.get_nowait() == 0
+    assert ch._count_last == 0
+    assert ch._count_pending is True
 
 
 # ---------------------------------------------------------------------------
@@ -52,12 +55,13 @@ def _make_channel_with_mock_mqtt(mocker):
     return ch, mqtt
 
 
-def test_loop_publishes_count_from_queue(mocker):
-    """loop() must call send_sensor with the value pushed into the queue."""
+def test_loop_publishes_count_from_latest_value(mocker):
+    """loop() must call send_sensor with the value published via push()."""
     ch, mqtt = _make_channel_with_mock_mqtt(mocker)
+    ch.push(3)
 
-    # First get() returns 3; second stops the loop.
-    ch._queue.get = mocker.Mock(side_effect=[3, InterruptedError("stop")])
+    # First wait() wakes on update; second stops the loop.
+    ch._count_event.wait = mocker.Mock(side_effect=[True, InterruptedError("stop")])
 
     with pytest.raises(InterruptedError):
         ch.loop("dev123", "Bridge")
@@ -73,13 +77,12 @@ def test_loop_publishes_count_from_queue(mocker):
 
 
 def test_loop_heartbeat_republishes_last_count(mocker):
-    """When get() times out (60 s heartbeat), last known count is re-published."""
+    """When wait() times out (60 s heartbeat), last known count is re-published."""
     ch, mqtt = _make_channel_with_mock_mqtt(mocker)
+    ch.push(4)
 
-    # First get() delivers 4; second simulates timeout (Empty); third stops.
-    ch._queue.get = mocker.Mock(
-        side_effect=[4, _queue.Empty(), InterruptedError("stop")]
-    )
+    # First wait() wakes on update; second times out; third stops.
+    ch._count_event.wait = mocker.Mock(side_effect=[True, False, InterruptedError("stop")])
 
     with pytest.raises(InterruptedError):
         ch.loop("devA", "Bridge")
@@ -95,9 +98,10 @@ def test_loop_heartbeat_republishes_last_count(mocker):
 def test_loop_handles_send_sensor_exception(mocker, capsys):
     """Exceptions from send_sensor must be caught and logged; loop must continue."""
     ch, mqtt = _make_channel_with_mock_mqtt(mocker)
+    ch.push(1)
 
     mqtt.send_sensor.side_effect = [RuntimeError("mqtt down"), None]
-    ch._queue.get = mocker.Mock(side_effect=[1, InterruptedError("stop")])
+    ch._count_event.wait = mocker.Mock(side_effect=[True, False, InterruptedError("stop")])
 
     with pytest.raises(InterruptedError):
         ch.loop("devB", "Bridge")
