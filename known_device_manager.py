@@ -486,8 +486,27 @@ class KnownDeviceManager:
         raw compound IDs.
         """
         with self._lock:
+            alias_by_logical_id: dict[str, str] = {}
+            physical_by_alias: dict[str, str] = {}
+            for alias_name, resolved in self._alias_device_resolved.items():
+                if not isinstance(resolved, dict):
+                    continue
+                logical_id = str(resolved.get("compound_id") or "").strip()
+                physical_id = str(resolved.get("physical_compound_id") or "").strip()
+                if logical_id:
+                    alias_by_logical_id[logical_id] = str(alias_name)
+                if alias_name and physical_id:
+                    physical_by_alias[str(alias_name)] = physical_id
+
             result: dict[str, str] = {}
             for cid, data in self.known_devices.items():
+                alias_name = alias_by_logical_id.get(cid)
+                if alias_name:
+                    # For bound devices, show alias label and resolve selection
+                    # back to the underlying physical id for rebind operations.
+                    result[alias_name] = physical_by_alias.get(alias_name, cid)
+                    continue
+
                 name = str(data.get("name") or cid).strip() or cid
                 result[name] = cid
             return result
