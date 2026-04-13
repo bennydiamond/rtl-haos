@@ -270,3 +270,144 @@ def test_remove_device_with_alias_token_uses_alias_delete_path():
     assert "rtl433_virtual_temp_sensor_ab12" not in manager.known_devices
     assert "rtl433_Device_0002" not in manager.known_devices
     assert cleanup_calls
+
+
+def test_bind_new_alias_to_already_bound_device_removes_old_alias():
+    """Binding a device to a NEW alias removes the old alias and its virtual device."""
+    cleanup_calls = []
+
+    store = Mock()
+    store.load_devices.return_value = {
+        "rtl433_virtual_old_alias": {
+            "name": "Old Alias",
+            "topics": [
+                "home/rtl_devices/rtl433_virtual_old_alias/temperature",
+                "homeassistant/sensor/rtl433_virtual_old_alias_temperature/config",
+            ],
+        },
+    }
+    store.load_alias_bindings.return_value = {
+        "old_alias": {
+            "device_compound_id": "rtl433_Device_0001",
+            "matches": 3,
+        }
+    }
+
+    manager = KnownDeviceManager(
+        known_device_store=store,
+        get_discovery_enabled_callback=lambda: False,
+        mqtt_cleanup_callback=lambda topics, name: cleanup_calls.append((topics, name)),
+        mqtt_update_select_callback=None,
+    )
+
+    # Bind same physical device under a new alias name
+    ok = manager.bind_alias_to_device("new_alias", "rtl433_Device_0001")
+    assert ok is True
+
+    # Old alias must be gone from bindings
+    assert "old_alias" not in manager.alias_bindings
+    assert "new_alias" in manager.alias_bindings
+
+    # Old virtual device must be removed from known_devices
+    assert "rtl433_virtual_old_alias" not in manager.known_devices
+
+    # MQTT cleanup must have been called for the old virtual device's topics
+    cleaned_topics = [t for topics, _ in cleanup_calls for t in topics]
+    assert "home/rtl_devices/rtl433_virtual_old_alias/temperature" in cleaned_topics
+
+    assert store.save_alias_bindings.called
+    assert store.save_devices.called
+
+
+def test_get_removable_options_with_names_excludes_orphaned_virtual_entries():
+    """Orphaned virtual entries from stale/conflicting bindings must not appear as raw IDs."""
+    store = Mock()
+    store.load_devices.return_value = {
+        "rtl433_virtual_new_alias": {
+            "name": "Physical Device",
+            "topics": [],
+        },
+        "rtl433_virtual_old_alias": {
+            "name": "Physical Device",
+            "topics": [],
+        },
+        "rtl433_Unrelated_9999": {
+            "name": "Unrelated",
+            "topics": [],
+        },
+    }
+    # Both alias_bindings point to same physical → rebuild() resolves only one winner
+    store.load_alias_bindings.return_value = {
+        "new_alias": {
+            "device_compound_id": "rtl433_Device_0001",
+            "matches": 5,
+        },
+        "old_alias": {
+            "device_compound_id": "rtl433_Device_0001",
+            "matches": 3,
+        },
+    }
+
+    manager = KnownDeviceManager(
+        known_device_store=store,
+        get_discovery_enabled_callback=lambda: False,
+        mqtt_cleanup_callback=lambda _t, _n: None,
+        mqtt_update_select_callback=None,
+    )
+
+    opts = manager.get_removable_options_with_names()
+
+    # Raw device name must not appear (all virtual entries excluded by alias coverage)
+    assert "Physical Device" not in opts
+    # Unrelated device must still appear
+    assert "Unrelated" in opts
+    # No raw virtual compound IDs in values
+    assert "rtl433_virtual_new_alias" not in opts.values()
+    assert "rtl433_virtual_old_alias" not in opts.values()
+
+
+def test_get_known_devices_with_names_excludes_orphaned_virtual_entries():
+    """Orphaned virtual entries (stale, lost conflict resolution) must not appear in bind dropdown."""
+    store = Mock()
+    store.load_devices.return_value = {
+        "rtl433_virtual_new_alias": {
+            "name": "Physical Device",
+            "topics": [],
+        },
+        "rtl433_virtual_old_alias": {
+            "name": "Physical Device",
+            "topics": [],
+        },
+        "rtl433_Unrelated_9999": {
+            "name": "Unrelated",
+            "topics": [],
+        },
+    }
+    store.load_alias_bindings.return_value = {
+        "new_alias": {
+            "device_compound_id": "rtl433_Device_0001",
+            "matches": 5,
+        },
+        "old_alias": {
+            "device_compound_id": "rtl433_Device_0001",
+            "matches": 3,
+        },
+    }
+
+    manager = KnownDeviceManager(
+        known_device_store=store,
+        get_discovery_enabled_callback=lambda: False,
+        mqtt_cleanup_callback=lambda _t, _n: None,
+        mqtt_update_select_callback=None,
+    )
+
+    opts = manager.get_known_devices_with_names()
+
+    # Raw device name from orphaned virtual entry must not appear
+    assert "Physical Device" not in opts
+    # Winner alias label must appear, pointing to physical ID for rebind
+    assert opts.get("new_alias") == "rtl433_Device_0001"
+    # Orphaned alias label must NOT appear (it lost in rebuild)
+    assert "old_alias" not in opts
+    # Unrelated non-virtual device must still appear
+    assert "Unrelated" in opts

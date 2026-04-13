@@ -188,6 +188,19 @@ class KnownDeviceManager:
             prev_alias_binding = self._alias_device_resolved.get(alias_name, {})
             prev_device_for_alias = str(prev_alias_binding.get("physical_compound_id") or "").strip()
 
+            # Find any OTHER alias already bound to the same physical device.
+            # This covers rebind: user creates/renames an alias for a device that
+            # was previously bound under a different alias name.
+            conflicting_alias: str | None = None
+            conflicting_logical: str | None = None
+            for other_alias, resolved in self._alias_device_resolved.items():
+                if other_alias == alias_name or not isinstance(resolved, dict):
+                    continue
+                if str(resolved.get("physical_compound_id") or "").strip() == device_compound_id:
+                    conflicting_alias = other_alias
+                    conflicting_logical = str(resolved.get("compound_id") or "").strip() or None
+                    break
+
             new_alias_bindings = dict(self.alias_bindings)
             entry = dict(new_alias_bindings.get(alias_name, {}))
             entry["device_compound_id"] = device_compound_id
@@ -208,9 +221,22 @@ class KnownDeviceManager:
                     entry.pop("logical_compound_id", None)
 
             new_alias_bindings[alias_name] = entry
+
+            # Remove conflicting alias binding (same physical device, different alias)
+            if conflicting_alias:
+                new_alias_bindings.pop(conflicting_alias, None)
+
             self.alias_bindings = new_alias_bindings
 
             removed_device_records: list[tuple[list[str], str | None]] = []
+
+            # Clean up logical device entry for the displaced conflicting alias
+            if conflicting_logical and conflicting_logical in self.known_devices:
+                old_data = self.known_devices.pop(conflicting_logical)
+                removed_device_records.append(
+                    (list(old_data.get("topics", [])), old_data.get("name"))
+                )
+
             # Always remove the target device's physical identity topics so
             # alias identity does not coexist with stale physical discovery.
             if device_compound_id in self.known_devices:
@@ -460,7 +486,23 @@ class KnownDeviceManager:
         as raw IDs alongside their alias entry.
         """
         with self._lock:
+            # Collect all IDs (physical + logical) that belong to any active alias binding.
+            # Using alias_bindings (not just _alias_device_resolved) ensures orphaned virtual
+            # entries from stale/conflicting bindings are also excluded.
             alias_bound_ids: set[str] = set()
+            for alias_k, binding in self.alias_bindings.items():
+                if not isinstance(binding, dict):
+                    continue
+                phys = str(
+                    binding.get("device_compound_id")
+                    or binding.get("physical_compound_id")
+                    or ""
+                ).strip()
+                if phys:
+                    alias_bound_ids.add(phys)
+                logical = self.known_device_aliases._logical_compound_from_alias(alias_k)
+                if logical:
+                    alias_bound_ids.add(logical)
             for resolved in self._alias_device_resolved.values():
                 if isinstance(resolved, dict):
                     alias_bound_ids.add(str(resolved.get("physical_compound_id") or ""))
@@ -498,15 +540,19 @@ class KnownDeviceManager:
                 if alias_name and physical_id:
                     physical_by_alias[str(alias_name)] = physical_id
 
+            # Set of physical IDs already represented by an alias entry
+            alias_bound_physical: set[str] = set(physical_by_alias.values())
+
             result: dict[str, str] = {}
             for cid, data in self.known_devices.items():
-                alias_name = alias_by_logical_id.get(cid)
-                if alias_name:
-                    # For bound devices, show alias label and resolve selection
-                    # back to the underlying physical id for rebind operations.
+                if cid.startswith("rtl433_virtual_"):
+                    # Only expose virtual entries that are active alias logical IDs.
+                    # Orphaned virtual entries (stale, lost conflict resolution) are skipped.
+                    alias_name = alias_by_logical_id.get(cid)
+                    if not alias_name:
+                        continue
                     result[alias_name] = physical_by_alias.get(alias_name, cid)
-                    continue
-
-                name = str(data.get("name") or cid).strip() or cid
-                result[name] = cid
+                elif cid not in alias_bound_physical:
+                    name = str(data.get("name") or cid).strip() or cid
+                    result[name] = cid
             return result
