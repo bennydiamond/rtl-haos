@@ -18,8 +18,8 @@ def test_alias_binding_conflict_resolution_prefers_highest_matches():
     r1 = aliases.resolve("rtl433_Model_1", "Model 1")
     r2 = aliases.resolve("rtl433_Model_2", "Model 2")
 
-    assert r1["compound_id"].startswith("rtl433_virtual_alias_b_")
-    assert r2["compound_id"].startswith("rtl433_virtual_alias_a_alt_")
+    assert r1["compound_id"] == "rtl433_virtual_alias_b"
+    assert r2["compound_id"] == "rtl433_virtual_alias_a_alt"
 
 
 def test_single_alias_and_single_device_enforced():
@@ -32,12 +32,12 @@ def test_single_alias_and_single_device_enforced():
     )
 
     winner = aliases.resolve("rtl433_Acurite_3398", "Acurite")
-    assert winner["compound_id"].startswith("rtl433_virtual_patio_")
+    assert winner["compound_id"] == "rtl433_virtual_patio"
 
     assert "garage" not in aliases._alias_device_resolved
 
     other = aliases.resolve("rtl433_Acurite_4471", "Acurite")
-    assert other["compound_id"].startswith("rtl433_virtual_patio_dup_")
+    assert other["compound_id"] == "rtl433_virtual_patio_dup"
 
 
 def test_manager_allows_processing_explicit_alias_binding_when_discovery_off():
@@ -98,7 +98,7 @@ def test_bind_alias_rebind_removes_previous_device_and_cleans_topics():
     assert ok is True
 
     resolved = manager.resolve_device_identity("rtl433_Device_0002", "Temp 0002")
-    assert resolved["compound_id"].startswith("rtl433_virtual_temp_sensor_")
+    assert resolved["compound_id"] == "rtl433_virtual_temp_sensor"
 
     # Preferred behavior: both stale physical identities are removed.
     assert "rtl433_Device_0001" not in manager.known_devices

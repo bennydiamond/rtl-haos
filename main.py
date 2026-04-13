@@ -234,13 +234,13 @@ def main():
     mqtt_handler.on_nuke_callback = known_device_manager.clear_all_devices
     mqtt_handler.get_known_devices_callback = getattr(
         known_device_manager,
-        "get_removable_device_options",
+        "get_removable_options_with_names",
         known_device_manager.get_known_devices,
     )
     mqtt_handler.remove_device_callback = known_device_manager.remove_device
     mqtt_handler.get_bindable_devices_callback = getattr(
         known_device_manager,
-        "get_known_devices",
+        "get_known_devices_with_names",
         None,
     )
     mqtt_handler.bind_alias_callback = getattr(
