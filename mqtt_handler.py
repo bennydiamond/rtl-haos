@@ -187,7 +187,11 @@ class HomeNodeMQTT:
         # Callbacks for Single Device Deletion
         self.get_known_devices_callback = None
         self.remove_device_callback = None
+        self.get_alias_names_callback = None
+        self.delete_alias_callback = None
+        self.resolve_device_identity_callback = None
         self.selected_device_to_remove = "No device selected"
+        self.selected_alias_to_delete = "No alias selected"
 
         # Track one-time migrations (e.g., entity type/domain changes)
         self.migration_cleared = set()
@@ -695,6 +699,13 @@ class HomeNodeMQTT:
         self._client_subscribe(self.remove_device_command_topic)
         self._client_subscribe(self.known_devices_command_topic)
 
+        # 6. Subscribe to Alias Delete Commands
+        self.delete_alias_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/delete_alias/set"
+        self.aliases_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/set"
+        self.aliases_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/state"
+        self._client_subscribe(self.delete_alias_command_topic)
+        self._client_subscribe(self.aliases_command_topic)
+
         # 4. Publish host control entities
         self._publish_nuke_button()
         self._publish_restart_button()
@@ -702,6 +713,8 @@ class HomeNodeMQTT:
         self._publish_discovery_toggle_state()
         self._publish_remove_device_button()
         self.queue_publish_known_devices_select()
+        self._publish_delete_alias_button()
+        self.publish_aliases_select()
 
     def _on_connect(self, c, u, f, rc, p=None):
         if rc == 0:
@@ -781,6 +794,26 @@ class HomeNodeMQTT:
                     print(f"[MQTT] Requesting removal of single device: {target}")
                     self.remove_device_callback(target)
                     self.selected_device_to_remove = "No device selected"
+                    self.publish_known_devices_select()
+                return
+
+            # 7. Handle Alias Dropdown
+            aliases_command_topic = getattr(self, "aliases_command_topic", None)
+            if aliases_command_topic and topic == aliases_command_topic:
+                selected = payload.decode("utf-8") if isinstance(payload, (bytes, bytearray)) else str(payload)
+                self.selected_alias_to_delete = selected
+                self._client_publish(self.aliases_state_topic, selected, retain=True)
+                return
+
+            # 8. Handle Delete Alias Button (default action: delete alias and bound device)
+            delete_alias_command_topic = getattr(self, "delete_alias_command_topic", None)
+            if delete_alias_command_topic and topic == delete_alias_command_topic:
+                target_alias = self.selected_alias_to_delete
+                if target_alias and target_alias != "No alias selected" and callable(self.delete_alias_callback):
+                    print(f"[MQTT] Requesting alias deletion (with bound device cleanup): {target_alias}")
+                    self.delete_alias_callback(target_alias)
+                    self.selected_alias_to_delete = "No alias selected"
+                    self.publish_aliases_select()
                     self.publish_known_devices_select()
                 return
 
@@ -951,6 +984,71 @@ class HomeNodeMQTT:
         config_topic = f"homeassistant/button/{unique_id}/config"
         self._client_publish(config_topic, json.dumps(payload), retain=True)
 
+    def publish_aliases_select(self):
+        """Creates the 'Aliases' dropdown for alias-management actions."""
+        sys_id = get_system_mac().replace(":", "").lower()
+        unique_id = f"rtl_bridge_aliases{config.ID_SUFFIX}"
+
+        options = ["No alias selected"]
+        if callable(self.get_alias_names_callback):
+            try:
+                options += sorted(list(self.get_alias_names_callback()))
+            except Exception:
+                pass
+
+        if self.selected_alias_to_delete not in options:
+            self.selected_alias_to_delete = "No alias selected"
+
+        payload = {
+            "name": "Select Alias to delete",
+            "command_topic": getattr(self, "aliases_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/set"),
+            "state_topic": getattr(self, "aliases_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/state"),
+            "options": options,
+            "unique_id": unique_id,
+            "icon": "mdi:at",
+            "entity_category": "config",
+            "device": {
+                "identifiers": [f"rtl433_{config.BRIDGE_NAME}_{sys_id}"],
+                "manufacturer": "rtl-haos",
+                "model": config.BRIDGE_NAME,
+                "name": f"{config.BRIDGE_NAME} ({sys_id})",
+                "sw_version": self.sw_version,
+            },
+            "availability_topic": self.TOPIC_AVAILABILITY,
+        }
+
+        config_topic = f"homeassistant/select/{unique_id}/config"
+        self._client_publish(config_topic, json.dumps(payload), retain=True)
+        state_topic = getattr(self, "aliases_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/state")
+        self._client_publish(state_topic, self.selected_alias_to_delete, retain=True)
+
+    def _publish_delete_alias_button(self):
+        """Creates the 'Delete Selected Alias' button.
+
+        Default action removes the alias and its currently bound device.
+        """
+        sys_id = get_system_mac().replace(":", "").lower()
+        unique_id = f"rtl_bridge_delete_alias{config.ID_SUFFIX}"
+
+        payload = {
+            "name": "Delete Selected Alias",
+            "command_topic": getattr(self, "delete_alias_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/delete_alias/set"),
+            "unique_id": unique_id,
+            "icon": "mdi:delete-alert",
+            "entity_category": "config",
+            "device": {
+                "identifiers": [f"rtl433_{config.BRIDGE_NAME}_{sys_id}"],
+                "manufacturer": "rtl-haos",
+                "model": config.BRIDGE_NAME,
+                "name": f"{config.BRIDGE_NAME} ({sys_id})",
+                "sw_version": self.sw_version,
+            },
+            "availability_topic": self.TOPIC_AVAILABILITY,
+        }
+
+        config_topic = f"homeassistant/button/{unique_id}/config"
+        self._client_publish(config_topic, json.dumps(payload), retain=True)
+
     def _get_discovery_enabled(self) -> bool:
         """Return current discovery toggle state.
         
@@ -1053,6 +1151,8 @@ class HomeNodeMQTT:
         self._publish_discovery_toggle_state()
         self._publish_remove_device_button()
         self.publish_known_devices_select()
+        self._publish_delete_alias_button()
+        self.publish_aliases_select()
         print("[NUKE] Host Entities restored.")
 
     def start(self):
@@ -1406,6 +1506,7 @@ class HomeNodeMQTT:
             "published": False,
             "reason": "",
             "topics": [],
+            "resolved_compound_id": "",
         }
 
         if value is None:
@@ -1418,7 +1519,24 @@ class HomeNodeMQTT:
 
         status["accepted"] = True
 
-        compound_id = f"rtl433_{device_model}_{clean_id}"
+        physical_compound_id = f"rtl433_{device_model}_{clean_id}"
+        compound_id = physical_compound_id
+        resolved_device_name = device_name
+
+        resolver = getattr(self, "resolve_device_identity_callback", None)
+        if callable(resolver):
+            try:
+                resolved = resolver(physical_compound_id, device_name) or {}
+                resolved_id = str(resolved.get("compound_id") or "").strip()
+                if resolved_id:
+                    compound_id = resolved_id
+                resolved_name = str(resolved.get("device_name") or "").strip()
+                if resolved_name:
+                    resolved_device_name = resolved_name
+            except Exception as e:
+                print(f"[MQTT] resolve_device_identity callback error: {e}")
+
+        status["resolved_compound_id"] = compound_id
         
         # Remember model for model-specific discovery/unit overrides.
         self._device_model_by_id[compound_id] = str(device_model)
@@ -1461,7 +1579,7 @@ class HomeNodeMQTT:
         if commodity_update and commodity_update != prev_commodity:
             self._commodity_by_device[compound_id] = commodity_update
             # Now that we know commodity, update any utility entities we already published.
-            self._refresh_utility_entities_for_device(compound_id, clean_id, device_name, device_model)
+            self._refresh_utility_entities_for_device(compound_id, clean_id, resolved_device_name, device_model)
 
         meta_override = None
         if field in {"Consumption", "consumption", "consumption_data", "meter_reading"}:
@@ -1538,7 +1656,7 @@ class HomeNodeMQTT:
             field,
             state_topic,
             unique_id,
-            device_name,
+            resolved_device_name,
             device_model,
             compound_id=compound_id,
             friendly_name_override=friendly_name,
@@ -1561,7 +1679,7 @@ class HomeNodeMQTT:
             if value_changed:
                 # --- NEW: Check Verbosity Setting ---
                 if config.VERBOSE_TRANSMISSIONS:
-                    print(f" -> TX {device_name} [{field}]: {out_value}")
+                    print(f" -> TX {resolved_device_name} [{field}]: {out_value}")
 
         if not status["reason"]:
             status["reason"] = "published" if status["published"] else "accepted_no_state_publish"

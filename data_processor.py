@@ -66,8 +66,9 @@ class DataProcessor:
             
             # Save to JSON whenever new topics are created, even if the device was already known.
             if self.known_device_manager and status.get("topics"):
+                known_compound_id = status.get("resolved_compound_id") or compound_id
                 self.known_device_manager.add_or_update_device(
-                    compound_id=compound_id,
+                    compound_id=known_compound_id,
                     device_name=dev_name,
                     new_topics=status["topics"],
                 )
@@ -157,8 +158,9 @@ class DataProcessor:
                     status = self._send_with_reply(clean_id, field, final_val, dev_name, model, is_rtl=True)
                     
                     if self.known_device_manager and status.get("topics"):
+                        known_compound_id = status.get("resolved_compound_id") or compound_id
                         self.known_device_manager.add_or_update_device(
-                            compound_id=compound_id,
+                            compound_id=known_compound_id,
                             device_name=dev_name,
                             new_topics=status["topics"],
                         )

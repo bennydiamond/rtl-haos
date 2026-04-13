@@ -592,6 +592,10 @@ What happens?
 - It specifically targets and clears *only* the retained MQTT discovery and state topics associated with that exact device.
 - Home Assistant cleanly removes the device and its entities from your dashboard.
 
+If the selected item is an alias-bound device (shown as alias name), removal also deletes
+the alias binding and matched device mapping. To add that hardware back under its real
+physical identity, enable **Allow New Device Discovery** and wait for a fresh transmission.
+
 ### 🧹 Delete Entities (Press 5x)
 
 If you change batteries or remove devices, old entities may linger in Home Assistant. This cleanup tool clears the **MQTT Discovery configs** RTL-HAOS created.
