@@ -596,6 +596,19 @@ If the selected item is an alias-bound device (shown as alias name), removal als
 the alias binding and matched device mapping. To add that hardware back under its real
 physical identity, enable **Allow New Device Discovery** and wait for a fresh transmission.
 
+### 🔗 Create or Rebind an Alias
+
+Use these Bridge controls to map a physical device to a stable logical alias:
+
+1. In **Alias Name** (text entity), enter the alias you want (for example `front_gate_sensor`).
+2. In **Select Device to bind** (select entity), pick the physical device compound ID.
+3. Press **Create/Bind Alias**.
+
+What happens?
+- RTL-HAOS creates or updates the alias binding in `alias_bindings`.
+- Discovery/state publish under the alias identity so entity IDs stay stable.
+- Stale retained topics for the old physical identity are cleaned to avoid duplicates.
+
 ### 🧹 Delete Entities (Press 5x)
 
 If you change batteries or remove devices, old entities may linger in Home Assistant. This cleanup tool clears the **MQTT Discovery configs** RTL-HAOS created.

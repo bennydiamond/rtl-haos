@@ -48,13 +48,15 @@ RTL-HAOS publishes several HA entities (buttons, switches, and selects) under th
 - `home/status/rtl_bridge<ID_SUFFIX>/restart/set` (Restart Radios)
 - `home/status/rtl_bridge<ID_SUFFIX>/remove_device/set` (Remove Selected Device button)
 - `home/status/rtl_bridge<ID_SUFFIX>/known_devices/set` (Select Device to remove dropdown selection)
-- `home/status/rtl_bridge<ID_SUFFIX>/delete_alias/set` (Delete Selected Alias button)
-- `home/status/rtl_bridge<ID_SUFFIX>/aliases/set` (Select Alias to delete dropdown selection)
+- `home/status/rtl_bridge<ID_SUFFIX>/bind_alias/set` (Create/Bind Alias button)
+- `home/status/rtl_bridge<ID_SUFFIX>/alias_name/set` (Alias Name text input)
+- `home/status/rtl_bridge<ID_SUFFIX>/bind_devices/set` (Select Device to bind dropdown selection)
 - `home/status/rtl_bridge<ID_SUFFIX>/discovery_new_devices/set` (Toggle New Device Discovery)
 
-Alias select state is mirrored on:
+Alias bind helper state is mirrored on:
 
-- `home/status/rtl_bridge<ID_SUFFIX>/aliases/state`
+- `home/status/rtl_bridge<ID_SUFFIX>/alias_name/state`
+- `home/status/rtl_bridge<ID_SUFFIX>/bind_devices/state`
 
 Known-device select state is mirrored on:
 
@@ -66,16 +68,16 @@ Alias identity is driven by `alias_bindings` persisted in the known-devices file
 
 - Bound devices publish discovery/state using alias logical identity.
 - When binding/rebinding an alias, stale physical-identity retained topics are cleaned.
-- Default alias delete action (**Delete Selected Alias**) removes:
-  - the alias binding, and
-  - the currently bound physical device entry from known devices,
-  then clears retained MQTT topics for that removed device.
+- Creating/binding is driven by the Bridge controls:
+  - enter alias text in **Alias Name**,
+  - choose a physical device in **Select Device to bind**,
+  - press **Create/Bind Alias**.
 
 This keeps Home Assistant from showing duplicate entities for the same real device.
 
-If an alias-bound device is deleted (via alias delete action or alias-aware remove-device
-selection), the alias binding and matched device entry are removed. To bring the hardware
-back as a normal physical device, enable discovery and wait for the next transmission.
+If an alias-bound device is deleted via the alias-aware remove-device selection,
+the alias binding and matched device entry are removed. To bring the hardware back as a
+normal physical device, enable discovery and wait for the next transmission.
 
 ## Entity cleanup ("Delete Entities")
 
