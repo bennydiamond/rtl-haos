@@ -187,11 +187,12 @@ class HomeNodeMQTT:
         # Callbacks for Single Device Deletion
         self.get_known_devices_callback = None
         self.remove_device_callback = None
-        self.get_alias_names_callback = None
-        self.delete_alias_callback = None
+        self.get_bindable_devices_callback = None
+        self.bind_alias_callback = None
         self.resolve_device_identity_callback = None
         self.selected_device_to_remove = "No device selected"
-        self.selected_alias_to_delete = "No alias selected"
+        self.selected_device_to_bind = "No device selected"
+        self.alias_name_to_bind = ""
 
         # Track one-time migrations (e.g., entity type/domain changes)
         self.migration_cleared = set()
@@ -261,6 +262,7 @@ class HomeNodeMQTT:
     def _worker_publish_known_devices_select(self, _item) -> None:
         try:
             self.publish_known_devices_select()
+            self.publish_bind_devices_select()
         except Exception as e:
             print(f"[MQTT] publish_known_devices_select worker error: {e}")
 
@@ -699,12 +701,15 @@ class HomeNodeMQTT:
         self._client_subscribe(self.remove_device_command_topic)
         self._client_subscribe(self.known_devices_command_topic)
 
-        # 6. Subscribe to Alias Delete Commands
-        self.delete_alias_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/delete_alias/set"
-        self.aliases_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/set"
-        self.aliases_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/state"
-        self._client_subscribe(self.delete_alias_command_topic)
-        self._client_subscribe(self.aliases_command_topic)
+        # 6. Subscribe to Alias Bind Commands
+        self.bind_alias_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/bind_alias/set"
+        self.bind_alias_name_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/alias_name/set"
+        self.bind_alias_name_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/alias_name/state"
+        self.bind_devices_command_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/bind_devices/set"
+        self.bind_devices_state_topic = f"home/status/rtl_bridge{config.ID_SUFFIX}/bind_devices/state"
+        self._client_subscribe(self.bind_alias_command_topic)
+        self._client_subscribe(self.bind_alias_name_command_topic)
+        self._client_subscribe(self.bind_devices_command_topic)
 
         # 4. Publish host control entities
         self._publish_nuke_button()
@@ -713,8 +718,9 @@ class HomeNodeMQTT:
         self._publish_discovery_toggle_state()
         self._publish_remove_device_button()
         self.queue_publish_known_devices_select()
-        self._publish_delete_alias_button()
-        self.publish_aliases_select()
+        self._publish_alias_name_text()
+        self.publish_bind_devices_select()
+        self._publish_bind_alias_button()
 
     def _on_connect(self, c, u, f, rc, p=None):
         if rc == 0:
@@ -797,24 +803,41 @@ class HomeNodeMQTT:
                     self.publish_known_devices_select()
                 return
 
-            # 7. Handle Alias Dropdown
-            aliases_command_topic = getattr(self, "aliases_command_topic", None)
-            if aliases_command_topic and topic == aliases_command_topic:
+            # 7. Handle Bind Devices Dropdown
+            bind_devices_command_topic = getattr(self, "bind_devices_command_topic", None)
+            if bind_devices_command_topic and topic == bind_devices_command_topic:
                 selected = payload.decode("utf-8") if isinstance(payload, (bytes, bytearray)) else str(payload)
-                self.selected_alias_to_delete = selected
-                self._client_publish(self.aliases_state_topic, selected, retain=True)
+                self.selected_device_to_bind = selected
+                self._client_publish(self.bind_devices_state_topic, selected, retain=True)
                 return
 
-            # 8. Handle Delete Alias Button (default action: delete alias and bound device)
-            delete_alias_command_topic = getattr(self, "delete_alias_command_topic", None)
-            if delete_alias_command_topic and topic == delete_alias_command_topic:
-                target_alias = self.selected_alias_to_delete
-                if target_alias and target_alias != "No alias selected" and callable(self.delete_alias_callback):
-                    print(f"[MQTT] Requesting alias deletion (with bound device cleanup): {target_alias}")
-                    self.delete_alias_callback(target_alias)
-                    self.selected_alias_to_delete = "No alias selected"
-                    self.publish_aliases_select()
-                    self.publish_known_devices_select()
+            # 8. Handle Alias Name Text Input
+            bind_alias_name_command_topic = getattr(self, "bind_alias_name_command_topic", None)
+            if bind_alias_name_command_topic and topic == bind_alias_name_command_topic:
+                raw_alias = payload.decode("utf-8") if isinstance(payload, (bytes, bytearray)) else str(payload)
+                self.alias_name_to_bind = str(raw_alias or "").strip()
+                self._client_publish(self.bind_alias_name_state_topic, self.alias_name_to_bind, retain=True)
+                return
+
+            # 9. Handle Create/Bind Alias Button
+            bind_alias_command_topic = getattr(self, "bind_alias_command_topic", None)
+            if bind_alias_command_topic and topic == bind_alias_command_topic:
+                target_device = self.selected_device_to_bind
+                target_alias = self.alias_name_to_bind
+                if (
+                    target_device
+                    and target_device != "No device selected"
+                    and target_alias
+                    and callable(self.bind_alias_callback)
+                ):
+                    print(f"[MQTT] Requesting alias bind: alias='{target_alias}' device='{target_device}'")
+                    ok = bool(self.bind_alias_callback(target_alias, target_device))
+                    if ok:
+                        self.selected_device_to_bind = "No device selected"
+                        self.alias_name_to_bind = ""
+                        self.publish_bind_devices_select()
+                        self.publish_known_devices_select()
+                        self._client_publish(self.bind_alias_name_state_topic, self.alias_name_to_bind, retain=True)
                 return
 
             # 4. Handle Nuke Scanning (Search & Destroy)
@@ -984,28 +1007,29 @@ class HomeNodeMQTT:
         config_topic = f"homeassistant/button/{unique_id}/config"
         self._client_publish(config_topic, json.dumps(payload), retain=True)
 
-    def publish_aliases_select(self):
-        """Creates the 'Aliases' dropdown for alias-management actions."""
+    def publish_bind_devices_select(self):
+        """Creates the 'Bind Devices' dropdown for alias create/bind actions."""
         sys_id = get_system_mac().replace(":", "").lower()
-        unique_id = f"rtl_bridge_aliases{config.ID_SUFFIX}"
+        unique_id = f"rtl_bridge_bind_devices{config.ID_SUFFIX}"
 
-        options = ["No alias selected"]
-        if callable(self.get_alias_names_callback):
+        options = ["No device selected"]
+        get_devices_cb = self.get_bindable_devices_callback or self.get_known_devices_callback
+        if callable(get_devices_cb):
             try:
-                options += sorted(list(self.get_alias_names_callback()))
+                options += sorted(list(get_devices_cb()))
             except Exception:
                 pass
 
-        if self.selected_alias_to_delete not in options:
-            self.selected_alias_to_delete = "No alias selected"
+        if self.selected_device_to_bind not in options:
+            self.selected_device_to_bind = "No device selected"
 
         payload = {
-            "name": "Select Alias to delete",
-            "command_topic": getattr(self, "aliases_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/set"),
-            "state_topic": getattr(self, "aliases_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/state"),
+            "name": "Select Device to bind",
+            "command_topic": getattr(self, "bind_devices_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/bind_devices/set"),
+            "state_topic": getattr(self, "bind_devices_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/bind_devices/state"),
             "options": options,
             "unique_id": unique_id,
-            "icon": "mdi:at",
+            "icon": "mdi:link-variant",
             "entity_category": "config",
             "device": {
                 "identifiers": [f"rtl433_{config.BRIDGE_NAME}_{sys_id}"],
@@ -1019,22 +1043,47 @@ class HomeNodeMQTT:
 
         config_topic = f"homeassistant/select/{unique_id}/config"
         self._client_publish(config_topic, json.dumps(payload), retain=True)
-        state_topic = getattr(self, "aliases_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/aliases/state")
-        self._client_publish(state_topic, self.selected_alias_to_delete, retain=True)
+        state_topic = getattr(self, "bind_devices_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/bind_devices/state")
+        self._client_publish(state_topic, self.selected_device_to_bind, retain=True)
 
-    def _publish_delete_alias_button(self):
-        """Creates the 'Delete Selected Alias' button.
-
-        Default action removes the alias and its currently bound device.
-        """
+    def _publish_alias_name_text(self):
+        """Creates the alias-name text input used by the bind action."""
         sys_id = get_system_mac().replace(":", "").lower()
-        unique_id = f"rtl_bridge_delete_alias{config.ID_SUFFIX}"
+        unique_id = f"rtl_bridge_alias_name{config.ID_SUFFIX}"
 
         payload = {
-            "name": "Delete Selected Alias",
-            "command_topic": getattr(self, "delete_alias_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/delete_alias/set"),
+            "name": "Alias Name",
+            "command_topic": getattr(self, "bind_alias_name_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/alias_name/set"),
+            "state_topic": getattr(self, "bind_alias_name_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/alias_name/state"),
+            "mode": "text",
             "unique_id": unique_id,
-            "icon": "mdi:delete-alert",
+            "icon": "mdi:form-textbox",
+            "entity_category": "config",
+            "device": {
+                "identifiers": [f"rtl433_{config.BRIDGE_NAME}_{sys_id}"],
+                "manufacturer": "rtl-haos",
+                "model": config.BRIDGE_NAME,
+                "name": f"{config.BRIDGE_NAME} ({sys_id})",
+                "sw_version": self.sw_version,
+            },
+            "availability_topic": self.TOPIC_AVAILABILITY,
+        }
+
+        config_topic = f"homeassistant/text/{unique_id}/config"
+        self._client_publish(config_topic, json.dumps(payload), retain=True)
+        state_topic = getattr(self, "bind_alias_name_state_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/alias_name/state")
+        self._client_publish(state_topic, self.alias_name_to_bind, retain=True)
+
+    def _publish_bind_alias_button(self):
+        """Creates the 'Create/Bind Alias' button."""
+        sys_id = get_system_mac().replace(":", "").lower()
+        unique_id = f"rtl_bridge_bind_alias{config.ID_SUFFIX}"
+
+        payload = {
+            "name": "Create/Bind Alias",
+            "command_topic": getattr(self, "bind_alias_command_topic", f"home/status/rtl_bridge{config.ID_SUFFIX}/bind_alias/set"),
+            "unique_id": unique_id,
+            "icon": "mdi:link-plus",
             "entity_category": "config",
             "device": {
                 "identifiers": [f"rtl433_{config.BRIDGE_NAME}_{sys_id}"],
@@ -1151,8 +1200,9 @@ class HomeNodeMQTT:
         self._publish_discovery_toggle_state()
         self._publish_remove_device_button()
         self.publish_known_devices_select()
-        self._publish_delete_alias_button()
-        self.publish_aliases_select()
+        self._publish_alias_name_text()
+        self.publish_bind_devices_select()
+        self._publish_bind_alias_button()
         print("[NUKE] Host Entities restored.")
 
     def start(self):

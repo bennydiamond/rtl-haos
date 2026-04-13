@@ -238,14 +238,14 @@ def main():
         known_device_manager.get_known_devices,
     )
     mqtt_handler.remove_device_callback = known_device_manager.remove_device
-    mqtt_handler.get_alias_names_callback = getattr(
+    mqtt_handler.get_bindable_devices_callback = getattr(
         known_device_manager,
-        "get_alias_names",
+        "get_known_devices",
         None,
     )
-    mqtt_handler.delete_alias_callback = getattr(
+    mqtt_handler.bind_alias_callback = getattr(
         known_device_manager,
-        "delete_alias_and_bound_device",
+        "bind_alias_to_device",
         None,
     )
     mqtt_handler.resolve_device_identity_callback = getattr(

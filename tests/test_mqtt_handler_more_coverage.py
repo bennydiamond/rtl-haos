@@ -202,21 +202,25 @@ def test_on_connect_success_subscribes_and_publishes_buttons(monkeypatch):
     assert hasattr(h, "restart_command_topic")
     assert hasattr(h, "discovery_command_topic")
     assert hasattr(h, "discovery_state_topic")
-    assert hasattr(h, "delete_alias_command_topic")
-    assert hasattr(h, "aliases_command_topic")
-    assert hasattr(h, "aliases_state_topic")
+    assert hasattr(h, "bind_alias_command_topic")
+    assert hasattr(h, "bind_alias_name_command_topic")
+    assert hasattr(h, "bind_alias_name_state_topic")
+    assert hasattr(h, "bind_devices_command_topic")
+    assert hasattr(h, "bind_devices_state_topic")
     assert h.nuke_command_topic in c.subscribed
     assert h.restart_command_topic in c.subscribed
     assert h.discovery_command_topic in c.subscribed
-    assert h.delete_alias_command_topic in c.subscribed
-    assert h.aliases_command_topic in c.subscribed
+    assert h.bind_alias_command_topic in c.subscribed
+    assert h.bind_alias_name_command_topic in c.subscribed
+    assert h.bind_devices_command_topic in c.subscribed
 
     # buttons published
     assert any(t.startswith("homeassistant/button/rtl_bridge_nuke_T/config") for (t, _, _) in c.published)
     assert any(t.startswith("homeassistant/button/rtl_bridge_restart_T/config") for (t, _, _) in c.published)
     assert any(t.startswith("homeassistant/switch/rtl_bridge_discovery_new_devices_T/config") for (t, _, _) in c.published)
-    assert any(t.startswith("homeassistant/button/rtl_bridge_delete_alias_T/config") for (t, _, _) in c.published)
-    assert any(t.startswith("homeassistant/select/rtl_bridge_aliases_T/config") for (t, _, _) in c.published)
+    assert any(t.startswith("homeassistant/button/rtl_bridge_bind_alias_T/config") for (t, _, _) in c.published)
+    assert any(t.startswith("homeassistant/select/rtl_bridge_bind_devices_T/config") for (t, _, _) in c.published)
+    assert any(t.startswith("homeassistant/text/rtl_bridge_alias_name_T/config") for (t, _, _) in c.published)
     assert any(t == h.discovery_state_topic and p in {"ON", "OFF"} and r is True for (t, p, r) in c.published)
 
 
@@ -289,31 +293,44 @@ def test_on_message_remove_device_button(monkeypatch):
     assert any(t == h.known_devices_state_topic and p == "No device selected" and r is True for (t, p, r) in c.published)
 
 
-def test_on_message_aliases_dropdown_select(monkeypatch):
+def test_on_message_bind_devices_dropdown_select(monkeypatch):
     h, c = _make_handler(monkeypatch)
     h._on_connect(c, None, None, rc=0)
 
-    msg = types.SimpleNamespace(topic=h.aliases_command_topic, payload=b"temp_sensor")
+    msg = types.SimpleNamespace(topic=h.bind_devices_command_topic, payload=b"rtl433_Test_123")
     h._on_message(c, None, msg)
 
-    assert h.selected_alias_to_delete == "temp_sensor"
-    assert any(t == h.aliases_state_topic and p == "temp_sensor" and r is True for (t, p, r) in c.published)
+    assert h.selected_device_to_bind == "rtl433_Test_123"
+    assert any(t == h.bind_devices_state_topic and p == "rtl433_Test_123" and r is True for (t, p, r) in c.published)
 
 
-def test_on_message_delete_alias_button(monkeypatch):
+def test_on_message_alias_name_text_input(monkeypatch):
+    h, c = _make_handler(monkeypatch)
+    h._on_connect(c, None, None, rc=0)
+
+    msg = types.SimpleNamespace(topic=h.bind_alias_name_command_topic, payload=b"temp_sensor")
+    h._on_message(c, None, msg)
+
+    assert h.alias_name_to_bind == "temp_sensor"
+    assert any(t == h.bind_alias_name_state_topic and p == "temp_sensor" and r is True for (t, p, r) in c.published)
+
+
+def test_on_message_bind_alias_button(monkeypatch):
     h, c = _make_handler(monkeypatch)
     h._on_connect(c, None, None, rc=0)
 
     called_with = []
-    h.delete_alias_callback = lambda alias: called_with.append(alias)
+    h.bind_alias_callback = lambda alias, device: called_with.append((alias, device)) or True
 
-    h.selected_alias_to_delete = "temp_sensor"
-    msg = types.SimpleNamespace(topic=h.delete_alias_command_topic, payload=b"PRESS")
+    h.alias_name_to_bind = "temp_sensor"
+    h.selected_device_to_bind = "rtl433_Test_123"
+    msg = types.SimpleNamespace(topic=h.bind_alias_command_topic, payload=b"PRESS")
     h._on_message(c, None, msg)
 
-    assert called_with == ["temp_sensor"]
-    assert h.selected_alias_to_delete == "No alias selected"
-    assert any(t == h.aliases_state_topic and p == "No alias selected" and r is True for (t, p, r) in c.published)
+    assert called_with == [("temp_sensor", "rtl433_Test_123")]
+    assert h.selected_device_to_bind == "No device selected"
+    assert h.alias_name_to_bind == ""
+    assert any(t == h.bind_alias_name_state_topic and p == "" and r is True for (t, p, r) in c.published)
 
 def test_on_message_before_connect_is_caught(monkeypatch, capsys):
     h, c = _make_handler(monkeypatch)
