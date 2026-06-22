@@ -38,7 +38,8 @@ except ImportError as e:
 # Safe imports for the rest of the app
 import config
 from mqtt_handler import HomeNodeMQTT
-from utils import get_system_mac 
+from utils import get_system_mac
+from sdr_health import get_health_monitor 
 
 def format_list_for_ha(data_list):
     """Joins a list into a string and truncates to ~250 chars."""
@@ -128,7 +129,16 @@ def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME):
             # mqtt_handler.send_sensor(DEVICE_ID, "sys_cfg_blacklist", format_list_for_ha(bl), device_name, MODEL_NAME, is_rtl=True)
             # mqtt_handler.send_sensor(DEVICE_ID, "sys_cfg_whitelist", format_list_for_ha(wl), device_name, MODEL_NAME, is_rtl=True)
             # mqtt_handler.send_sensor(DEVICE_ID, "sys_cfg_sensors", format_list_for_ha(ms), device_name, MODEL_NAME, is_rtl=True)
-            
+
+            # C. SDR Health Monitoring
+            health = get_health_monitor()
+            is_problem, reason = health.check_health()
+            mqtt_handler.send_health_alert(DEVICE_ID, is_problem, reason, device_name, MODEL_NAME)
+            # Also publish reason as a text sensor for dashboard visibility
+            mqtt_handler.send_sensor(
+                DEVICE_ID, "sdr_health_reason", reason or "OK", device_name, MODEL_NAME, is_rtl=False
+            )
+
         except Exception as e:
             print(f"[ERROR] Bridge Stats update failed: {e}")
 

@@ -150,7 +150,13 @@ class Settings(BaseSettings):
     )
 
     # --- Device filtering ---
+    # Note: "time" is included by default. To publish timestamps, set rtl_publish_timestamps=True
+    # and ensure rtl_433 outputs time data (add "-M time" or "-M utc" to RTL_433_ARGS).
     skip_keys: list[str] = Field(default_factory=lambda: ["time", "protocol", "mod", "id"])
+
+    # If True, publish the "time" field from rtl_433 as a timestamp sensor.
+    # Requires rtl_433 to output time metadata (e.g., RTL_433_ARGS includes "-M time" or "-M utc").
+    rtl_publish_timestamps: bool = Field(default=False)
     device_blacklist: list[str] = Field(default_factory=lambda: ["SimpliSafe*", "EezTire*"])
     device_whitelist: list[str] = Field(default_factory=list)
 
@@ -173,8 +179,12 @@ class Settings(BaseSettings):
             "geomag_index",
             "wind_avg_km_h",
             "wind_avg_mi_h",
+            "wind_avg_m_s",
             "wind_gust_km_h",
             "wind_gust_mi_h",
+            "wind_max_m_s",
+            "wind_max_km_h",
+            "wind_max_mi_h",
             "wind_dir_deg",
             "wind_dir",
             "rain_mm",
@@ -182,6 +192,7 @@ class Settings(BaseSettings):
             "rain_rate_mm_h",
             "rain_rate_in_h",
             "lux",
+            "light_lux",
             "uv",
             "strikes",
             "strike_distance",
@@ -194,6 +205,14 @@ class Settings(BaseSettings):
             "volume_ft3",
             "volume_m3",
             "moisture",
+            "closed",  # door/window contact sensors
+            # Binary sensors (security)
+            "tamper",
+            "alarm",
+            "contact_open",
+            "reed_open",
+            "detect_wet",
+            "ext_power",
         ]
     )
 
@@ -213,6 +232,20 @@ class Settings(BaseSettings):
     battery_ok_clear_after: int = Field(
         default=300,
         description="Seconds battery_ok must be OK before clearing a low alert (0 disables).",
+    )
+
+    # --- SDR Health Monitoring ---
+    sdr_health_restart_threshold: int = Field(
+        default=3,
+        description="Number of restarts within window to trigger health alert.",
+    )
+    sdr_health_restart_window: int = Field(
+        default=600,
+        description="Window in seconds for restart loop detection (default: 10 min).",
+    )
+    sdr_health_no_data_timeout: int = Field(
+        default=900,
+        description="Seconds without data to trigger health alert (default: 15 min).",
     )
 
     @property
@@ -258,7 +291,13 @@ RTL_AUTO_HOPPER_FREQS = settings.rtl_auto_hopper_freqs
 RTL_AUTO_HOPPER_HOP_INTERVAL = settings.rtl_auto_hopper_hop_interval
 RTL_AUTO_HOPPER_RATE = settings.rtl_auto_hopper_rate
 
-SKIP_KEYS = settings.skip_keys
+# Remove "time" from skip_keys if rtl_publish_timestamps is enabled
+_skip_keys = list(settings.skip_keys)
+if settings.rtl_publish_timestamps and "time" in _skip_keys:
+    _skip_keys.remove("time")
+SKIP_KEYS = _skip_keys
+
+RTL_PUBLISH_TIMESTAMPS = settings.rtl_publish_timestamps
 DEVICE_BLACKLIST = settings.device_blacklist
 DEVICE_WHITELIST = settings.device_whitelist
 MAIN_SENSORS = settings.main_sensors
@@ -277,3 +316,8 @@ KNOWN_DEVICES_PATH = settings.known_devices_path
 
 # Battery behavior
 BATTERY_OK_CLEAR_AFTER = settings.battery_ok_clear_after
+
+# SDR health monitoring
+SDR_HEALTH_RESTART_THRESHOLD = settings.sdr_health_restart_threshold
+SDR_HEALTH_RESTART_WINDOW = settings.sdr_health_restart_window
+SDR_HEALTH_NO_DATA_TIMEOUT = settings.sdr_health_no_data_timeout

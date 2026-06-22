@@ -41,7 +41,14 @@ options:
   # --- Battery alert behavior (battery_ok -> Battery Low) ---
   # 0 disables latching and clears low on the next OK
   battery_ok_clear_after: 300
-  
+
+  # --- SDR Health Monitoring ---
+  # Publishes binary_sensor.sdr_health_alert (device_class: problem) for HA automations.
+  # Alert conditions: restart loops, no data received, USB/crash errors.
+  sdr_health_restart_threshold: 3      # Restarts within window to trigger alert
+  sdr_health_restart_window: 600       # Window in seconds (default: 10 min)
+  sdr_health_no_data_timeout: 900      # Seconds without data to trigger alert (default: 15 min)
+
   # --- DEFAULTS (Add-on UI) ---
   # Global defaults are NOT exposed in the add-on UI.
   # In add-on mode, use rtl_config below to set freq/rate/hop per-radio.
@@ -76,11 +83,11 @@ options:
   device_whitelist: []
 
 schema:
-  gas_unit: str
   mqtt_host: str
   mqtt_port: port
   mqtt_user: str
   mqtt_pass: password
+  gas_unit: str?
   bridge_id: str
   bridge_name: str
   rtl_expire_after: int
@@ -101,6 +108,11 @@ schema:
   rtl_auto_band_plan: list(auto|us|eu|world)
 
   battery_ok_clear_after: int
+
+  # SDR health monitoring
+  sdr_health_restart_threshold: int?
+  sdr_health_restart_window: int?
+  sdr_health_no_data_timeout: int?
 
   # --- DELETED GLOBAL SCHEMA ---
   # The UI will no longer show the 3 text boxes for defaults.

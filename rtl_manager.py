@@ -19,6 +19,7 @@ from typing import Optional
 
 import config
 from utils import clean_mac, calculate_dew_point
+from sdr_health import get_health_monitor
 
 # --- Process Tracking ---
 class ProcessRegistry:
@@ -251,6 +252,9 @@ def _ensure_rtl433_outputs(cmd: list[str], *, radio_label: str, global_map: dict
     # Default metadata: add '-M level' if user didn't specify any -M
     if "-M" not in opt_map:
         cmd.extend(["-M", "level"])
+        # Also add '-M time' if rtl_publish_timestamps is enabled
+        if getattr(config, "RTL_PUBLISH_TIMESTAMPS", False):
+            cmd.extend(["-M", "time"])
 
     return cmd
 
@@ -888,6 +892,11 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                             data_raw = None
 
 
+                    # Record health: valid data received
+                    health = get_health_monitor()
+                    health.record_data_received(radio_name)
+                    health.clear_error(radio_name)
+
                     # Mark online once we see valid JSON
                     now = time.time()
                     if config.RTL_SHOW_TIMESTAMPS:
@@ -1016,6 +1025,9 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                             status,
                             friendly_name=status_friendly,
                         )
+                        # Record health: error detected
+                        health = get_health_monitor()
+                        health.record_error(radio_name, status.replace("Error: ", ""))
                         continue
 
                     # Ignore startup chatter that isn't actionable
@@ -1053,5 +1065,8 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                     )
 
         last_online_mark = 0.0
+        # Record health: restart
+        health = get_health_monitor()
+        health.record_restart(radio_name)
         print(f"[RTL] {radio_name} crashed/stopped. Restarting in 5s...")
         time.sleep(5)

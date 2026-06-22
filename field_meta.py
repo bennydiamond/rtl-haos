@@ -10,6 +10,10 @@ FIELD_META = {
     # "sys_cfg_whitelist":    ("", "none", "mdi:playlist-check", "Whitelist"),
     # "sys_cfg_sensors":      ("", "none", "mdi:eye-settings", "Main Sensors"),
 
+    # --- SDR Health Monitoring ---
+    "sdr_health_alert":     (None, "problem", "mdi:alert-octagon", "SDR Health Alert"),
+    "sdr_health_reason":    (None, "none", "mdi:information", "Health Alert Reason"),
+
     # --- System Diagnostics (Existing) ---
     "sys_device_count":     ("dev", "none", "mdi:counter", "Active Devices"),
     # "sys_device_list":      ("", "none", "mdi:format-list-bulleted", "Device List"),
@@ -44,6 +48,7 @@ FIELD_META = {
     "temperature_4_C":     ("°C", "temperature", "mdi:thermometer", "Temperature 4 (C)"),
     "temperature_1_F":     ("°F", "temperature", "mdi:thermometer", "Temperature 1"),
     "temperature_2_F":     ("°F", "temperature", "mdi:thermometer", "Temperature 2"),
+    "temperature_2":       ("°F", "temperature", "mdi:thermometer", "Temperature 2"),
     "dew_point":            ("°F", "temperature", "mdi:weather-fog", "Dew Point"),
 
     # --- Humidity ---
@@ -73,36 +78,62 @@ FIELD_META = {
     "wind_avg_km_h":        ("km/h", "wind_speed", "mdi:weather-windy", "Wind Speed"),
     "wind_avg_mi_h":        ("mph", "wind_speed", "mdi:weather-windy", "Wind Speed"),
     "wind_avg_m_s":        ("m/s", "wind_speed", "mdi:weather-windy", "Wind Speed"),
+    "wind_speed":           ("km/h", "wind_speed", "mdi:weather-windy", "Wind Speed"),
+    "wind_speed_km_h":      ("km/h", "wind_speed", "mdi:weather-windy", "Wind Speed"),
+    "wind_speed_m_s":       ("m/s", "wind_speed", "mdi:weather-windy", "Wind Speed"),
+    "wind_speed_mi_h":      ("mph", "wind_speed", "mdi:weather-windy", "Wind Speed"),
     "wind_gust_km_h":       ("km/h", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
     "wind_gust_mi_h":       ("mph", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
+    "wind_gust_m_s":        ("m/s", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
+    "gust_speed_km_h":      ("km/h", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
+    "gust_speed_m_s":       ("m/s", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
     "wind_max_m_s":        ("m/s", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
     "wind_max_km_h":       ("km/h", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
     "wind_max_mi_h":       ("mph", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
     "wind_dir_deg":         ("°", "wind_direction", "mdi:compass", "Wind Direction"),
     "wind_dir":             ("°", "wind_direction", "mdi:compass", "Wind Direction"),
+    "wind_dev_deg":         ("°", "none", "mdi:compass-rose", "Wind Deviation"),
 
     # --- Rain ---
     "rain_mm":              ("mm", "precipitation", "mdi:weather-rainy", "Rain Total"),
     "rain_in":              ("in", "precipitation", "mdi:weather-rainy", "Rain Total"),
     "rain_rate_mm_h":       ("mm/h", "precipitation_intensity", "mdi:weather-pouring", "Rain Rate"),
     "rain_rate_in_h":       ("in/h", "precipitation_intensity", "mdi:weather-pouring", "Rain Rate"),
+    "rain_start":           (None, "none", "mdi:weather-rainy", "Rain Detected"),
+    "rain2_mm":             ("mm", "precipitation", "mdi:weather-rainy", "Rain Total 2"),
+    "rain_raw":             ("count", "none", "mdi:weather-rainy", "Rain Raw Count"),
+    "rain":                 ("count", "none", "mdi:weather-rainy", "Rain Count"),
+    "rain1":                ("count", "none", "mdi:weather-rainy", "Rain Count 1"),
+    "rain2":                ("count", "none", "mdi:weather-rainy", "Rain Count 2"),
 
     # --- Light ---
     "lux":                  ("lx", "illuminance", "mdi:brightness-5", "Light Level"),
     "light_lux":           ("lx", "illuminance", "mdi:brightness-5", "Light Level"),
     "uvi":                 ("UV Index", "none", "mdi:sunglasses", "UV Index"),
+    "uv_index":            ("UV Index", "none", "mdi:sunglasses", "UV Index"),
     "full_lux":             ("cnt", "none", "mdi:brightness-7", "Raw Full Spectrum"),
     "ir_lux":               ("cnt", "none", "mdi:cctv", "Raw IR"),
     "uv":                   ("UV Index", "none", "mdi:sunglasses", "UV Index"),
+    "wm":                   ("W/m²", "irradiance", "mdi:white-balance-sunny", "Solar Radiation"),
+    "uv_sensor_id":         (None, "none", "mdi:identifier", "UV Sensor ID"),
+    "uv_status":            (None, "none", "mdi:check-circle", "UV Sensor Status"),
+    "exposure_mins":        ("min", "duration", "mdi:sun-clock", "UV Exposure Time"),
 
     # --- Lightning ---
     "strikes":              ("count", "none", "mdi:flash", "Lightning Strikes"),
     "strike_distance":      ("km", "distance", "mdi:flash-alert", "Storm Distance"),
     "storm_dist":           ("km", "distance", "mdi:flash-alert", "Storm Distance"),
+    "storm_distance":       ("km", "distance", "mdi:flash-alert", "Storm Distance"),
+    "storm_dist_km":        ("km", "distance", "mdi:flash-alert", "Storm Distance"),
     "strike_count":         (None, "none", "mdi:lightning-bolt", "Strike Count"),
+    "active":               (None, "none", "mdi:flash", "Lightning Active"),
 
     # --- Soil Moisture ---
     "moisture":            ("%", "moisture", "mdi:water-percent", "Soil Moisture"),
+
+    # --- Leak Detection (Acurite 1190/1192) ---
+    "leak_detected":       (None, "moisture", "mdi:water-alert", "Leak Detected"),
+    "water":               (None, "moisture", "mdi:water", "Water Detected"),
     
 
     # --- Radio Diagnostics ---
@@ -132,7 +163,38 @@ FIELD_META = {
     "mic":                  ("", "none", "mdi:check-network", "Integrity Check"),
     "radio_status":         ("", "none", "mdi:radio-tower", "Radio Status"),
     "rfi":                  (None, "none", "mdi:radio-tower", "RFI"),
-    
+    "radio_clock":          (None, "timestamp", "mdi:radio-tower", "Radio Clock"),
+    "signal":               (None, "none", "mdi:signal", "Signal Type"),
+    "firmware":             (None, "none", "mdi:chip", "Firmware"),
+    "sensitivity":          (None, "none", "mdi:tune", "Sensitivity"),
+    "raw_value":            (None, "none", "mdi:numeric", "Raw Value"),
+    "ad_raw":               (None, "none", "mdi:numeric", "ADC Raw"),
+    "boost":                (None, "none", "mdi:signal-cellular-3", "Boost Mode"),
+    "msg_type":             (None, "none", "mdi:message-text", "Message Type"),
+    "data":                 (None, "none", "mdi:code-braces", "Extra Data"),
+    "ptemp_raw":            (None, "none", "mdi:thermometer", "Raw Temperature"),
+    "phumidity":            (None, "none", "mdi:water-percent", "Raw Humidity"),
+
+    # --- Raw Data ---
+    # Raw hex message from rtl_433, useful for debugging or protocol analysis.
+    "raw_msg":              (None, "none", "mdi:code-tags", "Raw Message"),
+
+    # --- Timestamp ---
+    # rtl_433 outputs a "time" field when run with -M time or -M utc.
+    # This is useful to see when a device last transmitted, even if values didn't change.
+    "time":                 (None, "timestamp", "mdi:clock-in", "Last Seen"),
+    "sequence_num":         (None, "none", "mdi:counter", "Sequence"),
+    "message_type":         (None, "none", "mdi:message-text", "Message Type"),
+    "exception":            (None, "none", "mdi:alert-circle", "Exception"),
+    "seq":                  (None, "none", "mdi:counter", "Sequence"),
+    "startup":              (None, "none", "mdi:power", "Startup"),
+    "test":                 (None, "none", "mdi:test-tube", "Test Mode"),
+
+    # --- Depth / Level ---
+    "depth_cm":             ("cm", "distance", "mdi:arrow-collapse-down", "Depth"),
+    "depth_mm":             ("mm", "distance", "mdi:arrow-collapse-down", "Depth"),
+    "depth_in":             ("in", "distance", "mdi:arrow-collapse-down", "Depth"),
+
     # --- Utility Meters ---
     "Consumption":          ("ft³", "gas", "mdi:fire", "Gas Usage"),
     "consumption":          ("ft³", "gas", "mdi:fire", "Gas Usage"),
@@ -160,6 +222,16 @@ FIELD_META = {
     "current_A":           ("A", "current", "mdi:current-ac", "Current"),
 
 
+    # --- Security / Binary Sensors ---
+    # These fields are published as binary_sensors with appropriate device classes.
+    # The actual binary_sensor logic is in mqtt_handler.py BINARY_SENSOR_FIELDS.
+    "tamper":               (None, "tamper", "mdi:alert-circle", "Tamper"),
+    "alarm":                (None, "safety", "mdi:alarm-light", "Alarm"),
+    "contact_open":         (None, "door", "mdi:door", "Door"),
+    "reed_open":            (None, "door", "mdi:door", "Door"),
+    "detect_wet":           (None, "moisture", "mdi:water-alert", "Water Detected"),
+    "ext_power":            (None, "plug", "mdi:power-plug", "External Power"),
+
     # --- Battery ---
     # Many decoders emit battery_ok where 1/True means battery is OK and 0/False
     # means battery is LOW. We publish this as a binary sensor (device_class: battery)
@@ -170,6 +242,9 @@ FIELD_META = {
     "battery_mV":          ("mV", "voltage", "mdi:battery", "Battery Voltage"),
     "battery_low":         (None, "none", "mdi:battery-alert", "Battery Low (Raw)"),
     "battery_raw":         ("cnt", "none", "mdi:battery", "Battery Raw"),
+    "battery_level":       (None, "none", "mdi:battery", "Battery Level"),
+    "supercap_V":          ("V", "voltage", "mdi:solar-power", "Supercapacitor"),
+    "newbattery":          (None, "none", "mdi:battery-plus", "New Battery"),
 
 }
 

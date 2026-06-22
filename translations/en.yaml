@@ -1,4 +1,9 @@
 configuration:
+  gas_unit:
+    name: Gas Unit
+    description: >-
+      Unit for gas utility readings. Use 'ft3' (cubic feet) or 'ccf' (hundred cubic feet).
+      Defaults to 'ft3' if left empty.
   mqtt_host:
     name: MQTT Host
     description: >-
