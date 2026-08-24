@@ -33,7 +33,9 @@ def _run_rtl_loop_one_shot(monkeypatch, rtl_manager, radio):
     monkeypatch.setattr(rtl_manager.subprocess, "Popen", fake_popen)
 
     with pytest.raises(KeyboardInterrupt):
-        rtl_manager.rtl_loop(radio, mqtt_handler=None, data_processor=None, sys_id="sys", sys_model="rtl-haos")
+        rtl_manager.rtl_loop(
+            radio, mqtt_handler=None, data_processor=None, sys_id="sys", sys_model="rtl-haos"
+        )
 
     assert captured["cmd"] is not None
     return captured["cmd"]
@@ -81,7 +83,9 @@ def test_rtl_loop_logs_command_line_per_radio(monkeypatch, capsys):
     }
 
     with pytest.raises(KeyboardInterrupt):
-        rtl_manager.rtl_loop(radio, mqtt_handler=None, data_processor=None, sys_id="sys", sys_model="rtl-haos")
+        rtl_manager.rtl_loop(
+            radio, mqtt_handler=None, data_processor=None, sys_id="sys", sys_model="rtl-haos"
+        )
 
     out = capsys.readouterr().out
     assert "rtl_433 cmd [radioa id=101]" in out.lower()
@@ -264,6 +268,7 @@ def test_rtl433_args_overrides_per_radio_settings_and_warns(monkeypatch, capsys)
     assert "warning" in out
     assert "override" in out
     assert "-s" in out
+
 
 def test_build_cmd_uses_device_selector_rtl_tcp(monkeypatch):
     import rtl_manager

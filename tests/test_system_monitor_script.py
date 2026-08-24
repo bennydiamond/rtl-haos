@@ -14,7 +14,9 @@ def test_format_list_for_ha_truncates_and_sorts():
 
 def test_system_stats_loop_one_iteration_sends_rtl_433_version(mocker):
     mocker.patch.object(system_monitor, "PSUTIL_AVAILABLE", False)
-    mocker.patch.object(system_monitor, "get_rtl_433_version_cached", return_value="rtl_433 version 24.01")
+    mocker.patch.object(
+        system_monitor, "get_rtl_433_version_cached", return_value="rtl_433 version 24.01"
+    )
 
     mqtt_handler = mocker.Mock()
     mqtt_handler.tracked_devices = {"A", "B", "C"}

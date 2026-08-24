@@ -1,4 +1,3 @@
-
 import types
 import pytest
 
@@ -10,7 +9,9 @@ class DummyMQTT:
     def __init__(self):
         self.calls = []
 
-    def send_sensor(self, clean_id, field, value, dev_name, model, is_rtl=True, is_known_device=False):
+    def send_sensor(
+        self, clean_id, field, value, dev_name, model, is_rtl=True, is_known_device=False
+    ):
         self.calls.append((clean_id, field, value, dev_name, model, is_rtl, is_known_device))
         return {
             "accepted": True,
@@ -46,14 +47,26 @@ def test_throttle_loop_flushes_and_formats_values(monkeypatch, capsys):
     dp = data_processor.DataProcessor(mqtt)
 
     # Seed buffer with one device and a few fields.
-    dp.dispatch_reading("dev1", "watts", 1, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M")
-    dp.dispatch_reading("dev1", "watts", 1, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M")
+    dp.dispatch_reading(
+        "dev1", "watts", 1, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M"
+    )
+    dp.dispatch_reading(
+        "dev1", "watts", 1, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M"
+    )
     # Mean = 1.0 -> should publish int(1) via is_integer() branch.
-    dp.dispatch_reading("dev1", "temp", 1, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M")
-    dp.dispatch_reading("dev1", "temp", 2, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M")
+    dp.dispatch_reading(
+        "dev1", "temp", 1, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M"
+    )
+    dp.dispatch_reading(
+        "dev1", "temp", 2, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M"
+    )
     # Mean = 1.5 -> stays float (covers non-integer mean branch).
-    dp.dispatch_reading("dev1", "battery_ok", 1, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M")
-    dp.dispatch_reading("dev1", "battery_ok", 0, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M")
+    dp.dispatch_reading(
+        "dev1", "battery_ok", 1, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M"
+    )
+    dp.dispatch_reading(
+        "dev1", "battery_ok", 0, "Device 1", "ModelX", radio_name="RTL_A", radio_freq="915M"
+    )
     # NON_AVERAGED_NUMERIC_FIELDS -> last value (0)
 
     calls = {"n": 0}

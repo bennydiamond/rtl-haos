@@ -90,6 +90,7 @@ def _patch_sleep_to_exit(monkeypatch, main_mod):
 def main_mod():
     orig_print = builtins.print
     import main as m
+
     try:
         yield m
     finally:

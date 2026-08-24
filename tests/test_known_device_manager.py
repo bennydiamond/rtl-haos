@@ -1,4 +1,5 @@
 """Tests for KnownDeviceManager."""
+
 import pytest
 from unittest.mock import Mock
 
@@ -8,7 +9,9 @@ from known_device_manager import KnownDeviceManager
 @pytest.fixture
 def mock_store():
     store = Mock()
-    store.load_devices.return_value = {"rtl433_ModelA_123": {"name": "ModelA 123", "topics": ["t1"]}}
+    store.load_devices.return_value = {
+        "rtl433_ModelA_123": {"name": "ModelA 123", "topics": ["t1"]}
+    }
     return store
 
 
@@ -127,7 +130,7 @@ def test_remove_device_ignores_unknown(manager, mock_store, mock_mqtt_cleanup):
 def test_remove_device_handles_save_error(manager, mock_store, mock_mqtt_cleanup, capsys):
     # Pre-populate a device
     manager.known_devices["rtl433_ModelB_456"] = {"name": "ModelB 456", "topics": ["t2"]}
-    
+
     mock_store.save_devices.side_effect = IOError("Disk full")
 
     manager.remove_device("rtl433_ModelB_456")
@@ -158,9 +161,9 @@ def test_clear_all_devices_removes_all_and_saves(manager, mock_store):
 
 def test_clear_all_devices_handles_save_error(manager, mock_store, capsys):
     mock_store.save_devices.side_effect = IOError("Disk full")
-    
+
     manager.clear_all_devices()
-    
+
     out = capsys.readouterr().out
     assert "Error persisting clear_all" in out
     manager._mqtt_update_select.assert_not_called()

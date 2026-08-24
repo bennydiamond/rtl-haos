@@ -25,7 +25,10 @@ def test_safe_status_suffix_and_priority():
     assert rm._safe_status_suffix("a/b:c") == "a_b_c"
 
     # status_id wins
-    assert rm._derive_radio_status_field({"status_id": "slot0", "id": "101", "index": 2, "slot": 9}) == "radio_status_slot0"
+    assert (
+        rm._derive_radio_status_field({"status_id": "slot0", "id": "101", "index": 2, "slot": 9})
+        == "radio_status_slot0"
+    )
     # then id
     assert rm._derive_radio_status_field({"id": "101", "index": 2, "slot": 9}) == "radio_status_101"
     # then index

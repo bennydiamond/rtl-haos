@@ -35,7 +35,9 @@ def _last_published_json(client, topic_prefix):
         ("energy_kWh", "energy", "kWh", "total_increasing"),
     ],
 )
-def test_publish_discovery_uses_field_meta_for_new_fields(monkeypatch, sensor_name, expected_device_class, expected_unit, expected_state_class):
+def test_publish_discovery_uses_field_meta_for_new_fields(
+    monkeypatch, sensor_name, expected_device_class, expected_unit, expected_state_class
+):
     h, c = _make_handler(monkeypatch)
 
     h._publish_discovery(

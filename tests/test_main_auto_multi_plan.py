@@ -7,6 +7,7 @@ import pytest
 # that assert on log strings aren't affected.
 _ORIG_PRINT = builtins.print
 import main as main_mod
+
 builtins.print = _ORIG_PRINT
 
 
@@ -107,7 +108,6 @@ def _setup_main_for_test(monkeypatch, detected_devices, country_code):
         return None
 
     monkeypatch.setattr(main_mod.time, "sleep", fake_sleep)
-
 
 
 def _rtl_threads():

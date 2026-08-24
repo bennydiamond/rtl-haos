@@ -1,5 +1,6 @@
 # tests/test_sdr_health_mqtt.py
 """Tests for SDR health alert MQTT publishing."""
+
 import json
 
 import pytest

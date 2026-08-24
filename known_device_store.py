@@ -79,7 +79,7 @@ class KnownDeviceStore:
             return
 
         parent_dir = os.path.dirname(self.path) or "."
-        
+
         # Preserve non-device top-level keys (e.g. aliases) while updating devices.
         payload = self._load_raw()
         sorted_devices = {k: devices[k] for k in sorted(devices.keys())}

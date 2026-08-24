@@ -6,12 +6,14 @@ DESCRIPTION:
   - UPDATED: Now publishes Config lists (Blacklist, Whitelist, Main Sensors)
     to the Diagnostic tab.
 """
+
 import time
 import threading
 import sys
 import importlib.util
 import socket
 import subprocess
+
 # --- IMPORTS & DEPENDENCY CHECK ---
 # NOTE: During unit tests, conftest may inject a dummy "psutil" into sys.modules.
 # Some mocks (e.g. MagicMock) don't provide __spec__, which can cause
@@ -27,9 +29,12 @@ try:
     if psutil_spec is not None:
         import psutil  # noqa: F401
         from sensors_system import SystemMonitor
+
         PSUTIL_AVAILABLE = True
     else:
-        print("[WARN] 'psutil' not found. CPU/RAM stats will be disabled, but Device List will work.")
+        print(
+            "[WARN] 'psutil' not found. CPU/RAM stats will be disabled, but Device List will work."
+        )
 except ImportError as e:
     PSUTIL_AVAILABLE = False
     print(f"[WARN] System Monitoring disabled: {e}")
@@ -39,17 +44,18 @@ except ImportError as e:
 import config
 from mqtt_handler import HomeNodeMQTT
 from utils import get_system_mac
-from sdr_health import get_health_monitor 
+from sdr_health import get_health_monitor
+
 
 def format_list_for_ha(data_list):
     """Joins a list into a string and truncates to ~250 chars."""
     if not data_list:
         return "None"
-    
+
     # Convert all items to string just in case
     str_list = [str(i) for i in data_list]
     joined = ", ".join(sorted(str_list))
-    
+
     if len(joined) > 250:
         return joined[:247] + "..."
     return joined
@@ -57,6 +63,7 @@ def format_list_for_ha(data_list):
 
 # Cache rtl_433 version so we don't spawn a process every minute.
 _RTL_433_VERSION_CACHE = None
+
 
 def _get_rtl_433_version():
     """Return a short rtl_433 version string (best-effort)."""
@@ -81,14 +88,16 @@ def _get_rtl_433_version():
     except Exception as e:
         return f"Unknown ({type(e).__name__})"
 
+
 def get_rtl_433_version_cached():
     global _RTL_433_VERSION_CACHE
     if _RTL_433_VERSION_CACHE is None:
         _RTL_433_VERSION_CACHE = _get_rtl_433_version()
     return _RTL_433_VERSION_CACHE
 
+
 def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME):
-    
+
     # Initialize Hardware Monitor if available
     sys_mon = None
     if PSUTIL_AVAILABLE:
@@ -100,12 +109,11 @@ def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME):
 
     print("[STARTUP] Starting System Monitor Loop...")
 
-
     start_time = time.monotonic()
     rtl_433_version = get_rtl_433_version_cached()
-    
+
     while True:
-        device_name = f"{MODEL_NAME} ({DEVICE_ID})" 
+        device_name = f"{MODEL_NAME} ({DEVICE_ID})"
 
         # --- 1. BRIDGE METRICS (Always Run) ---
         try:
@@ -114,11 +122,20 @@ def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME):
             # count = len(devices)
             # dev_list_str = format_list_for_ha(devices) if count > 0 else "Scanning..."
 
-            mqtt_handler.send_sensor(DEVICE_ID, "sys_rtl_433_version", rtl_433_version, device_name, MODEL_NAME, is_rtl=True)
+            mqtt_handler.send_sensor(
+                DEVICE_ID,
+                "sys_rtl_433_version",
+                rtl_433_version,
+                device_name,
+                MODEL_NAME,
+                is_rtl=True,
+            )
             # mqtt_handler.send_sensor(DEVICE_ID, "sys_device_list", dev_list_str, device_name, MODEL_NAME, is_rtl=True)
 
             uptime_s = int(time.monotonic() - start_time)
-            mqtt_handler.send_sensor(DEVICE_ID, "sys_bridge_uptime", uptime_s, device_name, MODEL_NAME, is_rtl=True)
+            mqtt_handler.send_sensor(
+                DEVICE_ID, "sys_bridge_uptime", uptime_s, device_name, MODEL_NAME, is_rtl=True
+            )
 
             # B. Configuration Lists (Sent as Diagnostics)
             # We fetch these fresh from config every loop in case of future hot-reloads
@@ -136,7 +153,12 @@ def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME):
             mqtt_handler.send_health_alert(DEVICE_ID, is_problem, reason, device_name, MODEL_NAME)
             # Also publish reason as a text sensor for dashboard visibility
             mqtt_handler.send_sensor(
-                DEVICE_ID, "sdr_health_reason", reason or "OK", device_name, MODEL_NAME, is_rtl=False
+                DEVICE_ID,
+                "sdr_health_reason",
+                reason or "OK",
+                device_name,
+                MODEL_NAME,
+                is_rtl=False,
             )
 
         except Exception as e:
@@ -146,22 +168,18 @@ def system_stats_loop(mqtt_handler, DEVICE_ID, MODEL_NAME):
         if sys_mon:
             try:
                 stats = sys_mon.read_stats()
-                for key, value in stats.items(): 
+                for key, value in stats.items():
                     mqtt_handler.send_sensor(
-                        DEVICE_ID, 
-                        key, 
-                        value, 
-                        device_name, 
-                        MODEL_NAME, 
-                        is_rtl=True 
+                        DEVICE_ID, key, value, device_name, MODEL_NAME, is_rtl=True
                     )
             except Exception as e:
                 print(f"[SYSTEM ERROR] Hardware stats failed: {e}")
-            
-        time.sleep(60) 
+
+        time.sleep(60)
+
 
 if __name__ == "__main__":
-    BASE_DEVICE_ID = get_system_mac().replace(":","").lower()
+    BASE_DEVICE_ID = get_system_mac().replace(":", "").lower()
     BASE_MODEL_NAME = config.BRIDGE_NAME
 
     print("--- SYSTEM MONITOR STARTING ---")

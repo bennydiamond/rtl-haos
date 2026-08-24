@@ -57,5 +57,3 @@ def test_choose_hopper_eu_excludes_used_bands() -> None:
     assert "915m" not in parts
     assert "868.95m" not in parts
     assert "169.4m" in parts
-
-

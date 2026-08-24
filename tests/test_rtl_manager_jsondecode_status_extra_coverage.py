@@ -35,6 +35,10 @@ def test_rtl_loop_publishes_status_on_no_supported_devices(mocker):
     # Find at least one status publish that includes the friendly error.
     calls = mqtt.send_sensor.call_args_list
     assert any(
-        (len(c.args) >= 3 and c.args[1].startswith("radio_status_") and "No RTL-SDR device" in str(c.args[2]))
+        (
+            len(c.args) >= 3
+            and c.args[1].startswith("radio_status_")
+            and "No RTL-SDR device" in str(c.args[2])
+        )
         for c in calls
     )

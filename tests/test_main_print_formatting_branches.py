@@ -1,4 +1,3 @@
-
 import builtins
 import importlib
 import sys
@@ -58,7 +57,9 @@ def test_check_dependencies_paho_missing_exits(monkeypatch):
     m = import_main_safely()
 
     # rtl_433 exists
-    monkeypatch.setattr(m.subprocess, "run", lambda *a, **k: types.SimpleNamespace(stdout=b"/usr/bin/rtl_433\n"))
+    monkeypatch.setattr(
+        m.subprocess, "run", lambda *a, **k: types.SimpleNamespace(stdout=b"/usr/bin/rtl_433\n")
+    )
     # paho missing
     monkeypatch.setattr(m.importlib.util, "find_spec", lambda name: None)
 

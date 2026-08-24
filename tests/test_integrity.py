@@ -1,23 +1,17 @@
 import pytest
 from field_meta import FIELD_META
 
+
 def test_critical_fields_exist():
     """
     Ensures that critical sensor definitions are never deleted from FIELD_META.
     """
     # List of keys that MUST exist for the system to be useful
-    critical_keys = [
-        "temperature", 
-        "humidity", 
-        "rssi", 
-        "snr", 
-        "noise", 
-        "sys_device_count",
-        "freq"
-    ]
-    
+    critical_keys = ["temperature", "humidity", "rssi", "snr", "noise", "sys_device_count", "freq"]
+
     for key in critical_keys:
         assert key in FIELD_META, f"CRITICAL: Key '{key}' was deleted from FIELD_META!"
+
 
 def test_field_structure():
     """

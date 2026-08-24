@@ -3,7 +3,7 @@
 
 class DummyMQTT:
     """Standard mock MQTT handler for main.py tests."""
-    
+
     def __init__(self, version=None, *args, **kwargs):
         self.version = version
         self.allow_new_device_discovery = True
@@ -34,7 +34,7 @@ class DummyMQTT:
 
 class DummyProcessor:
     """Standard mock data processor for main.py tests."""
-    
+
     def __init__(self, mqtt, *args, **kwargs):
         self.mqtt = mqtt
 
@@ -44,7 +44,7 @@ class DummyProcessor:
 
 class DummyThread:
     """Standard mock Thread for main.py tests."""
-    
+
     def __init__(self, target=None, args=(), daemon=None):
         self.target = target
         self.args = args
@@ -56,7 +56,7 @@ class DummyThread:
 
 class DummyKnownStore:
     """Standard mock known device store for main.py tests."""
-    
+
     def __init__(self, path=None):
         self.path = path
 
@@ -69,7 +69,7 @@ class DummyKnownStore:
 
 class DummyKnownDeviceManager:
     """Standard mock known device manager for main.py tests."""
-    
+
     def __init__(self, *args, **kwargs):
         pass
 

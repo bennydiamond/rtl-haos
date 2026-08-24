@@ -25,6 +25,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 OPTIONS_PATH = "/data/options.json"
 
+
 def _load_ha_options_into_env() -> None:
     """If running as a HA add-on, load options.json into env vars."""
     if not os.path.exists(OPTIONS_PATH):
@@ -48,7 +49,9 @@ def _load_ha_options_into_env() -> None:
     except Exception as e:  # pragma: no cover
         print(f"[CONFIG] Error loading options: {e}")
 
+
 _load_ha_options_into_env()
+
 
 class Settings(BaseSettings):
     """Main application settings."""
@@ -71,7 +74,6 @@ class Settings(BaseSettings):
     #   - USB mode: device/id/index (e.g., {"id": "101", "freq": "433.92M"})
     #   - TCP mode: tcp_host/tcp_port (e.g., {"tcp_host": "192.168.1.10", "tcp_port": 1234, "freq": "433.92M"})
     rtl_config: list[dict] = Field(default_factory=list)
-
 
     # --- rtl_433 passthrough (add-on + standalone) ---
     # These let users pass arbitrary rtl_433 flags and/or a full rtl_433 config file (-c).
@@ -251,6 +253,7 @@ class Settings(BaseSettings):
     @property
     def id_suffix(self) -> str:
         return "_v2" if self.force_new_ids else ""
+
 
 settings = Settings()
 

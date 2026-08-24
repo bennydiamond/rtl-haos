@@ -23,7 +23,7 @@ class TestProcessRegistryBasic:
         """Registry tracks appended processes."""
         reg = ProcessRegistry()
         mock_proc = mock.MagicMock()
-        
+
         reg.append(mock_proc)
         assert mock_proc in reg
 
@@ -31,7 +31,7 @@ class TestProcessRegistryBasic:
         """Remove successfully removes existing process."""
         reg = ProcessRegistry()
         mock_proc = mock.MagicMock()
-        
+
         reg.append(mock_proc)
         reg.remove(mock_proc)
         assert mock_proc not in reg
@@ -40,7 +40,7 @@ class TestProcessRegistryBasic:
         """Remove raises ValueError if process not in registry."""
         reg = ProcessRegistry()
         mock_proc = mock.MagicMock()
-        
+
         with pytest.raises(ValueError):
             reg.remove(mock_proc)
 
@@ -48,7 +48,7 @@ class TestProcessRegistryBasic:
         """Discard returns True for existing process."""
         reg = ProcessRegistry()
         mock_proc = mock.MagicMock()
-        
+
         reg.append(mock_proc)
         result = reg.discard(mock_proc)
         assert result is True
@@ -58,7 +58,7 @@ class TestProcessRegistryBasic:
         """Discard returns False for missing process."""
         reg = ProcessRegistry()
         mock_proc = mock.MagicMock()
-        
+
         result = reg.discard(mock_proc)
         assert result is False
 
@@ -66,10 +66,10 @@ class TestProcessRegistryBasic:
         """Clear removes all processes."""
         reg = ProcessRegistry()
         procs = [mock.MagicMock() for _ in range(3)]
-        
+
         for proc in procs:
             reg.append(proc)
-        
+
         reg.clear()
         for proc in procs:
             assert proc not in reg
@@ -78,10 +78,10 @@ class TestProcessRegistryBasic:
         """Snapshot returns a list copy of items."""
         reg = ProcessRegistry()
         procs = [mock.MagicMock() for _ in range(2)]
-        
+
         for proc in procs:
             reg.append(proc)
-        
+
         snapshot = reg.snapshot()
         assert snapshot == procs
         # Modifying snapshot shouldn't affect registry
@@ -92,10 +92,10 @@ class TestProcessRegistryBasic:
         """Iteration allows reading snapshot safely."""
         reg = ProcessRegistry()
         procs = [mock.MagicMock() for _ in range(3)]
-        
+
         for proc in procs:
             reg.append(proc)
-        
+
         collected = list(reg)
         assert len(collected) == 3
         for proc in procs:
@@ -132,10 +132,10 @@ class TestProcessRegistryThreadSafety:
         """Multiple threads can concurrently attempt to discard."""
         reg = ProcessRegistry()
         procs = [mock.MagicMock() for _ in range(5)]
-        
+
         for proc in procs:
             reg.append(proc)
-        
+
         results = []
 
         def discarder(proc):
@@ -161,7 +161,7 @@ class TestProcessRegistryThreadSafety:
         reg = ProcessRegistry()
         proc = mock.MagicMock()
         reg.append(proc)
-        
+
         results = {"errors": 0, "successes": 0}
         lock = threading.Lock()
 
@@ -201,7 +201,7 @@ class TestProcessRegistryThreadSafety:
 
         threads = [threading.Thread(target=appender, args=(p,)) for p in procs]
         threads.append(threading.Thread(target=snapshotter))
-        
+
         for t in threads:
             t.start()
         for t in threads:
@@ -226,8 +226,7 @@ class TestProcessRegistryThreadSafety:
                 errors.append(e)
 
         threads = [
-            threading.Thread(target=cycle_adds_clears, args=(mock.MagicMock(),))
-            for _ in range(5)
+            threading.Thread(target=cycle_adds_clears, args=(mock.MagicMock(),)) for _ in range(5)
         ]
         for t in threads:
             t.start()
@@ -243,19 +242,19 @@ class TestProcessRegistryTermination:
     def test_terminate_all_running_terminates_active(self):
         """terminate_all_running stops all running processes."""
         reg = ProcessRegistry()
-        
+
         # Mock processes with different states
         running_proc = mock.MagicMock()
         running_proc.poll.return_value = None  # Still running
-        
+
         exited_proc = mock.MagicMock()
         exited_proc.poll.return_value = 0  # Already exited
-        
+
         reg.append(running_proc)
         reg.append(exited_proc)
-        
+
         reg.terminate_all_running()
-        
+
         # Should terminate running but not exited
         running_proc.terminate.assert_called_once()
         exited_proc.terminate.assert_not_called()
@@ -263,18 +262,18 @@ class TestProcessRegistryTermination:
     def test_terminate_all_running_with_exception(self):
         """terminate_all_running continues on exception."""
         reg = ProcessRegistry()
-        
+
         proc1 = mock.MagicMock()
         proc1.poll.return_value = None
         proc1.terminate.side_effect = RuntimeError("Terminate failed")
-        
+
         proc2 = mock.MagicMock()
         proc2.poll.return_value = None
         proc2.terminate.return_value = None
-        
+
         reg.append(proc1)
         reg.append(proc2)
-        
+
         # Implementation may or may not continue on exception
         # Just verify it doesn't crash
         try:
@@ -297,10 +296,10 @@ class TestProcessRegistryLockBehavior:
         """Multiple simultaneous iterations don't interfere."""
         reg = ProcessRegistry()
         procs = [mock.MagicMock() for _ in range(5)]
-        
+
         for proc in procs:
             reg.append(proc)
-        
+
         collected_lists = []
         lock = threading.Lock()
 
@@ -322,10 +321,10 @@ class TestProcessRegistryLockBehavior:
         """Snapshot and clear don't cause corruption."""
         reg = ProcessRegistry()
         procs = [mock.MagicMock() for _ in range(10)]
-        
+
         for proc in procs:
             reg.append(proc)
-        
+
         results = {"snapshots": [], "errors": []}
         lock = threading.Lock()
 
@@ -350,7 +349,7 @@ class TestProcessRegistryLockBehavior:
 
         threads = [threading.Thread(target=snapshotter) for _ in range(3)]
         threads.append(threading.Thread(target=clearer))
-        
+
         for t in threads:
             t.start()
         for t in threads:
@@ -369,14 +368,14 @@ class TestProcessRegistryWithActiveProcesses:
         # Get initial count
         initial_procs = list(ACTIVE_PROCESSES)
         initial_count = len(initial_procs)
-        
+
         mock_proc = mock.MagicMock()
         ACTIVE_PROCESSES.append(mock_proc)
-        
+
         # Should have one more
         assert len(list(ACTIVE_PROCESSES)) == initial_count + 1
         assert mock_proc in ACTIVE_PROCESSES
-        
+
         # Cleanup
         ACTIVE_PROCESSES.discard(mock_proc)
 
@@ -386,9 +385,9 @@ class TestProcessRegistryWithActiveProcesses:
         test_procs = [mock.MagicMock() for _ in range(3)]
         for proc in test_procs:
             ACTIVE_PROCESSES.append(proc)
-        
+
         ACTIVE_PROCESSES.clear()
-        
+
         # All gone
         for proc in test_procs:
             assert proc not in ACTIVE_PROCESSES

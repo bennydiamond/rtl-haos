@@ -8,61 +8,54 @@ import field_meta
 # so future refactors don't silently regress HA discovery metadata.
 EXPECTED = {
     # Battery
-    "battery_pct": ('%', 'battery', 'mdi:battery', 'Battery'),
-    "battery_V": ('V', 'voltage', 'mdi:battery', 'Battery Voltage'),
-    "battery_mV": ('mV', 'voltage', 'mdi:battery', 'Battery Voltage'),
-    "battery_low": (None, 'none', 'mdi:battery-alert', 'Battery Low (Raw)'),
-    "battery_raw": ('cnt', 'none', 'mdi:battery', 'Battery Raw'),
-
+    "battery_pct": ("%", "battery", "mdi:battery", "Battery"),
+    "battery_V": ("V", "voltage", "mdi:battery", "Battery Voltage"),
+    "battery_mV": ("mV", "voltage", "mdi:battery", "Battery Voltage"),
+    "battery_low": (None, "none", "mdi:battery-alert", "Battery Low (Raw)"),
+    "battery_raw": ("cnt", "none", "mdi:battery", "Battery Raw"),
     # Pressure
-    "pressure_hPa": ('hPa', 'pressure', 'mdi:gauge', 'Pressure'),
-    "pressure_kPa": ('kPa', 'pressure', 'mdi:gauge', 'Pressure'),
-    "pressure_psi": ('psi', 'pressure', 'mdi:gauge', 'Pressure'),
-
+    "pressure_hPa": ("hPa", "pressure", "mdi:gauge", "Pressure"),
+    "pressure_kPa": ("kPa", "pressure", "mdi:gauge", "Pressure"),
+    "pressure_psi": ("psi", "pressure", "mdi:gauge", "Pressure"),
     # Wind
-    "wind_avg_m_s": ('m/s', 'wind_speed', 'mdi:weather-windy', 'Wind Speed'),
-    "wind_max_m_s": ('m/s', 'wind_speed', 'mdi:weather-windy-variant', 'Wind Gust'),
-    "wind_max_km_h": ('km/h', 'wind_speed', 'mdi:weather-windy-variant', 'Wind Gust'),
-    "wind_max_mi_h": ('mph', 'wind_speed', 'mdi:weather-windy-variant', 'Wind Gust'),
-
+    "wind_avg_m_s": ("m/s", "wind_speed", "mdi:weather-windy", "Wind Speed"),
+    "wind_max_m_s": ("m/s", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
+    "wind_max_km_h": ("km/h", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
+    "wind_max_mi_h": ("mph", "wind_speed", "mdi:weather-windy-variant", "Wind Gust"),
     # Light / UV
-    "light_lux": ('lx', 'illuminance', 'mdi:brightness-5', 'Light Level'),
-    "uvi": ('UV Index', 'none', 'mdi:sunglasses', 'UV Index'),
-
+    "light_lux": ("lx", "illuminance", "mdi:brightness-5", "Light Level"),
+    "uvi": ("UV Index", "none", "mdi:sunglasses", "UV Index"),
     # Multi-probe temp/humidity and thermostat setpoint
-    "temperature_1_C": ('°C', 'temperature', 'mdi:thermometer', 'Temperature 1 (C)'),
-    "temperature_2_C": ('°C', 'temperature', 'mdi:thermometer', 'Temperature 2 (C)'),
-    "temperature_3_C": ('°C', 'temperature', 'mdi:thermometer', 'Temperature 3 (C)'),
-    "temperature_4_C": ('°C', 'temperature', 'mdi:thermometer', 'Temperature 4 (C)'),
-    "temperature_1_F": ('°F', 'temperature', 'mdi:thermometer', 'Temperature 1'),
-    "temperature_2_F": ('°F', 'temperature', 'mdi:thermometer', 'Temperature 2'),
-    "humidity_1": ('%', 'humidity', 'mdi:water-percent', 'Humidity 1'),
-    "humidity_2": ('%', 'humidity', 'mdi:water-percent', 'Humidity 2'),
-    "setpoint_C": ('°C', 'temperature', 'mdi:thermostat', 'Setpoint (C)'),
-    "setpoint_F": ('°F', 'temperature', 'mdi:thermostat', 'Setpoint'),
-
+    "temperature_1_C": ("°C", "temperature", "mdi:thermometer", "Temperature 1 (C)"),
+    "temperature_2_C": ("°C", "temperature", "mdi:thermometer", "Temperature 2 (C)"),
+    "temperature_3_C": ("°C", "temperature", "mdi:thermometer", "Temperature 3 (C)"),
+    "temperature_4_C": ("°C", "temperature", "mdi:thermometer", "Temperature 4 (C)"),
+    "temperature_1_F": ("°F", "temperature", "mdi:thermometer", "Temperature 1"),
+    "temperature_2_F": ("°F", "temperature", "mdi:thermometer", "Temperature 2"),
+    "humidity_1": ("%", "humidity", "mdi:water-percent", "Humidity 1"),
+    "humidity_2": ("%", "humidity", "mdi:water-percent", "Humidity 2"),
+    "setpoint_C": ("°C", "temperature", "mdi:thermostat", "Setpoint (C)"),
+    "setpoint_F": ("°F", "temperature", "mdi:thermostat", "Setpoint"),
     # Air quality
-    "co2_ppm": ('ppm', 'carbon_dioxide', 'mdi:molecule-co2', 'CO₂ Level'),
-    "pm2_5_ug_m3": ('µg/m³', 'pm25', 'mdi:blur', 'PM2.5'),
-    "pm10_ug_m3": ('µg/m³', 'pm10', 'mdi:blur', 'PM10'),
-    "pm10_0_ug_m3": ('µg/m³', 'pm10', 'mdi:blur', 'PM10'),
-    "estimated_pm10_0_ug_m3": ('µg/m³', 'pm10', 'mdi:blur', 'PM10 (Estimated)'),
-    "pm1_ug_m3": ('µg/m³', 'none', 'mdi:blur', 'PM1.0'),
-    "pm4_ug_m3": ('µg/m³', 'none', 'mdi:blur', 'PM4.0'),
-
+    "co2_ppm": ("ppm", "carbon_dioxide", "mdi:molecule-co2", "CO₂ Level"),
+    "pm2_5_ug_m3": ("µg/m³", "pm25", "mdi:blur", "PM2.5"),
+    "pm10_ug_m3": ("µg/m³", "pm10", "mdi:blur", "PM10"),
+    "pm10_0_ug_m3": ("µg/m³", "pm10", "mdi:blur", "PM10"),
+    "estimated_pm10_0_ug_m3": ("µg/m³", "pm10", "mdi:blur", "PM10 (Estimated)"),
+    "pm1_ug_m3": ("µg/m³", "none", "mdi:blur", "PM1.0"),
+    "pm4_ug_m3": ("µg/m³", "none", "mdi:blur", "PM4.0"),
     # Power / energy
-    "power_W": ('W', 'power', 'mdi:flash', 'Power'),
-    "power0_W": ('W', 'power', 'mdi:flash', 'Power 0'),
-    "power1_W": ('W', 'power', 'mdi:flash', 'Power 1'),
-    "power2_W": ('W', 'power', 'mdi:flash', 'Power 2'),
-    "power3_W": ('W', 'power', 'mdi:flash', 'Power 3'),
-    "energy_kWh": ('kWh', 'energy', 'mdi:counter', 'Energy'),
-    "total_kWh": ('kWh', 'energy', 'mdi:counter', 'Energy Total'),
-    "voltage_V": ('V', 'voltage', 'mdi:sine-wave', 'Voltage'),
-    "current_A": ('A', 'current', 'mdi:current-ac', 'Current'),
-
+    "power_W": ("W", "power", "mdi:flash", "Power"),
+    "power0_W": ("W", "power", "mdi:flash", "Power 0"),
+    "power1_W": ("W", "power", "mdi:flash", "Power 1"),
+    "power2_W": ("W", "power", "mdi:flash", "Power 2"),
+    "power3_W": ("W", "power", "mdi:flash", "Power 3"),
+    "energy_kWh": ("kWh", "energy", "mdi:counter", "Energy"),
+    "total_kWh": ("kWh", "energy", "mdi:counter", "Energy Total"),
+    "voltage_V": ("V", "voltage", "mdi:sine-wave", "Voltage"),
+    "current_A": ("A", "current", "mdi:current-ac", "Current"),
     # Radio diagnostics
-    "last_seen": (None, 'timestamp', 'mdi:clock-outline', 'Last Seen'),
+    "last_seen": (None, "timestamp", "mdi:clock-outline", "Last Seen"),
 }
 
 

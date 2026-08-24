@@ -80,8 +80,7 @@ def test_share_mount_present_and_readable():
             p_abs = p
 
         assert str(p_abs).startswith(str(share)), (
-            "RTL_HAOS_SHARE_TEST_FILE must point to a file under /share "
-            f"(got: {p})"
+            f"RTL_HAOS_SHARE_TEST_FILE must point to a file under /share (got: {p})"
         )
         assert p.exists(), f"Expected share test file to exist: {p}"
         assert os.access(str(p), os.R_OK), f"Expected share test file to be readable: {p}"

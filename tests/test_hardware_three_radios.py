@@ -76,4 +76,3 @@ def test_three_dongles_discoverable_and_openable() -> None:
             f"rtl_433 failed for device index {idx}\n"
             f"STDOUT:\n{proc.stdout}\n\nSTDERR:\n{proc.stderr}"
         )
-

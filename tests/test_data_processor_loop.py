@@ -3,6 +3,7 @@ import pytest
 from data_processor import DataProcessor
 import data_processor
 
+
 def test_throttle_loop_flushes_numeric_and_string(mocker):
     mocker.patch("config.RTL_THROTTLE_INTERVAL", 1)
 
@@ -13,8 +14,12 @@ def test_throttle_loop_flushes_numeric_and_string(mocker):
     p.dispatch_reading("dev1", "temp", 10.0, "Dev", "Model", radio_name="RTL0", radio_freq="433M")
     p.dispatch_reading("dev1", "temp", 20.0, "Dev", "Model", radio_name="RTL0", radio_freq="433M")
     p.dispatch_reading("dev1", "temp", 30.0, "Dev", "Model", radio_name="RTL0", radio_freq="433M")
-    p.dispatch_reading("dev1", "state", "Open", "Dev", "Model", radio_name="RTL0", radio_freq="433M")
-    p.dispatch_reading("dev1", "state", "Closed", "Dev", "Model", radio_name="RTL0", radio_freq="433M")
+    p.dispatch_reading(
+        "dev1", "state", "Open", "Dev", "Model", radio_name="RTL0", radio_freq="433M"
+    )
+    p.dispatch_reading(
+        "dev1", "state", "Closed", "Dev", "Model", radio_name="RTL0", radio_freq="433M"
+    )
 
     # sleep once (process), then raise to stop loop
     mocker.patch.object(data_processor.time, "sleep", side_effect=[None, KeyboardInterrupt])

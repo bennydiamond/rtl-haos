@@ -24,13 +24,9 @@ class TestKnownDeviceManagerBasic:
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {"dev1": {"name": "Device 1"}}
         mock_discovery_cb = mock.MagicMock(return_value=True)
-        
-        manager = KnownDeviceManager(
-            mock_store,
-            mock_discovery_cb,
-            mock.MagicMock()
-        )
-        
+
+        manager = KnownDeviceManager(mock_store, mock_discovery_cb, mock.MagicMock())
+
         assert "dev1" in manager.known_devices
         assert manager.known_devices["dev1"]["name"] == "Device 1"
 
@@ -39,15 +35,11 @@ class TestKnownDeviceManagerBasic:
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
         mock_discovery_cb = mock.MagicMock(return_value=True)
-        
-        manager = KnownDeviceManager(
-            mock_store,
-            mock_discovery_cb,
-            mock.MagicMock()
-        )
-        
+
+        manager = KnownDeviceManager(mock_store, mock_discovery_cb, mock.MagicMock())
+
         manager.add_or_update_device("dev1", "Device1", "Model1")
-        
+
         # Verify save was called
         mock_store.save_devices.assert_called()
         call_args = mock_store.save_devices.call_args[0][0]
@@ -59,16 +51,12 @@ class TestKnownDeviceManagerBasic:
         mock_store.load_devices.return_value = {}
         mock_discovery_cb = mock.MagicMock(return_value=True)
         mock_cleanup_cb = mock.MagicMock()
-        
-        manager = KnownDeviceManager(
-            mock_store,
-            mock_discovery_cb,
-            mock_cleanup_cb
-        )
-        
+
+        manager = KnownDeviceManager(mock_store, mock_discovery_cb, mock_cleanup_cb)
+
         manager.add_or_update_device("dev1", "Device1", "Model1")
         manager.remove_device("dev1")
-        
+
         # Cleanup should have been called
         mock_cleanup_cb.assert_called()
 
@@ -77,15 +65,11 @@ class TestKnownDeviceManagerBasic:
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
         mock_discovery_cb = mock.MagicMock(return_value=True)
-        
-        manager = KnownDeviceManager(
-            mock_store,
-            mock_discovery_cb,
-            mock.MagicMock()
-        )
-        
+
+        manager = KnownDeviceManager(mock_store, mock_discovery_cb, mock.MagicMock())
+
         result = manager.get_discovery_enabled()
-        
+
         assert result is True
         mock_discovery_cb.assert_called()
 
@@ -97,18 +81,16 @@ class TestKnownDeviceManagerPersistenceHelpers:
         """_save_known_devices_locked saves to store."""
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
-        
+
         manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock.MagicMock()
+            mock_store, mock.MagicMock(return_value=True), mock.MagicMock()
         )
-        
+
         manager.known_devices = {"dev1": {"name": "Device 1"}}
-        
+
         with manager._lock:
             result = manager._save_known_devices_locked("test_context")
-        
+
         assert result is True
         mock_store.save_devices.assert_called_with(manager.known_devices)
 
@@ -117,16 +99,14 @@ class TestKnownDeviceManagerPersistenceHelpers:
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
         mock_store.save_devices.side_effect = RuntimeError("Save failed")
-        
+
         manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock.MagicMock()
+            mock_store, mock.MagicMock(return_value=True), mock.MagicMock()
         )
-        
+
         with manager._lock:
             result = manager._save_known_devices_locked("error_context")
-        
+
         assert result is False
 
     def test_notify_select_update_calls_callback(self):
@@ -134,30 +114,30 @@ class TestKnownDeviceManagerPersistenceHelpers:
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
         mock_notify_cb = mock.MagicMock()
-        
+
         manager = KnownDeviceManager(
             mock_store,
             mock.MagicMock(return_value=True),
             mock.MagicMock(),
-            mqtt_update_select_callback=mock_notify_cb
+            mqtt_update_select_callback=mock_notify_cb,
         )
-        
+
         manager._notify_select_update()
-        
+
         mock_notify_cb.assert_called_once()
 
     def test_notify_select_update_handles_none_callback(self):
         """_notify_select_update handles None callback gracefully."""
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
-        
+
         manager = KnownDeviceManager(
             mock_store,
             mock.MagicMock(return_value=True),
             mock.MagicMock(),
-            mqtt_update_select_callback=None
+            mqtt_update_select_callback=None,
         )
-        
+
         # Should not raise
         manager._notify_select_update()
 
@@ -169,13 +149,11 @@ class TestKnownDeviceManagerThreadSafety:
         """Multiple threads can safely add devices concurrently."""
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
-        
+
         manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock.MagicMock()
+            mock_store, mock.MagicMock(return_value=True), mock.MagicMock()
         )
-        
+
         errors = []
 
         def add_device(dev_id):
@@ -197,17 +175,15 @@ class TestKnownDeviceManagerThreadSafety:
         """Multiple readers while writers modify state."""
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
-        
+
         manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock.MagicMock()
+            mock_store, mock.MagicMock(return_value=True), mock.MagicMock()
         )
-        
+
         # Start with some devices
         for i in range(5):
             manager.known_devices[f"dev{i}"] = {"name": f"Device {i}"}
-        
+
         read_results = []
         errors = []
         lock = threading.Lock()
@@ -232,7 +208,7 @@ class TestKnownDeviceManagerThreadSafety:
         threads = [
             threading.Thread(target=reader),
             threading.Thread(target=reader),
-            threading.Thread(target=writer)
+            threading.Thread(target=writer),
         ]
         for t in threads:
             t.start()
@@ -248,13 +224,9 @@ class TestKnownDeviceManagerThreadSafety:
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
         mock_cleanup_cb = mock.MagicMock()
-        
-        manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock_cleanup_cb
-        )
-        
+
+        manager = KnownDeviceManager(mock_store, mock.MagicMock(return_value=True), mock_cleanup_cb)
+
         errors = []
 
         def add_remove_cycle(device_id):
@@ -279,17 +251,15 @@ class TestKnownDeviceManagerThreadSafety:
         """Clearing all devices during concurrent access works safely."""
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
-        
+
         manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock.MagicMock()
+            mock_store, mock.MagicMock(return_value=True), mock.MagicMock()
         )
-        
+
         # Add initial devices
         for i in range(10):
             manager.known_devices[f"dev{i}"] = {"name": f"Device {i}"}
-        
+
         size_history = []
         errors = []
         lock = threading.Lock()
@@ -313,7 +283,7 @@ class TestKnownDeviceManagerThreadSafety:
         threads = [
             threading.Thread(target=observer),
             threading.Thread(target=observer),
-            threading.Thread(target=clearer)
+            threading.Thread(target=clearer),
         ]
         for t in threads:
             t.start()
@@ -332,13 +302,11 @@ class TestKnownDeviceManagerLockBehavior:
         """Lock prevents corruption during modifications."""
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
-        
+
         manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock.MagicMock()
+            mock_store, mock.MagicMock(return_value=True), mock.MagicMock()
         )
-        
+
         corrupted = []
 
         def aggressive_modifier():
@@ -365,13 +333,11 @@ class TestKnownDeviceManagerLockBehavior:
         """Modifications and saves happen atomically."""
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
-        
+
         manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock.MagicMock()
+            mock_store, mock.MagicMock(return_value=True), mock.MagicMock()
         )
-        
+
         save_states = []
 
         def saver():
@@ -394,7 +360,7 @@ class TestKnownDeviceManagerLockBehavior:
         threads = [
             threading.Thread(target=saver),
             threading.Thread(target=saver),
-            threading.Thread(target=modifier)
+            threading.Thread(target=modifier),
         ]
         for t in threads:
             t.start()
@@ -413,16 +379,12 @@ class TestKnownDeviceManagerErrorHandling:
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
         mock_discovery_cb = mock.MagicMock(side_effect=RuntimeError("Discovery check failed"))
-        
-        manager = KnownDeviceManager(
-            mock_store,
-            mock_discovery_cb,
-            mock.MagicMock()
-        )
-        
+
+        manager = KnownDeviceManager(mock_store, mock_discovery_cb, mock.MagicMock())
+
         # Should return False on error, not raise
         result = manager.get_discovery_enabled()
-        
+
         assert result is False
 
     def test_cleanup_callback_error_during_remove(self):
@@ -430,15 +392,11 @@ class TestKnownDeviceManagerErrorHandling:
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
         mock_cleanup_cb = mock.MagicMock(side_effect=RuntimeError("Cleanup failed"))
-        
-        manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock_cleanup_cb
-        )
-        
+
+        manager = KnownDeviceManager(mock_store, mock.MagicMock(return_value=True), mock_cleanup_cb)
+
         manager.add_or_update_device("dev1", "Device1", "Model1")
-        
+
         # Should handle error gracefully
         try:
             manager.remove_device("dev1")
@@ -452,13 +410,11 @@ class TestKnownDeviceManagerErrorHandling:
         mock_store.load_devices.return_value = {}
         # First save succeeds, then fails
         mock_store.save_devices.side_effect = [None, RuntimeError("Save failed"), None]
-        
+
         manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock.MagicMock()
+            mock_store, mock.MagicMock(return_value=True), mock.MagicMock()
         )
-        
+
         errors = []
 
         def add_with_possible_failure(dev_id):
@@ -467,7 +423,9 @@ class TestKnownDeviceManagerErrorHandling:
             except Exception as e:
                 errors.append(e)
 
-        threads = [threading.Thread(target=add_with_possible_failure, args=(f"dev{i}",)) for i in range(5)]
+        threads = [
+            threading.Thread(target=add_with_possible_failure, args=(f"dev{i}",)) for i in range(5)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -486,24 +444,24 @@ class TestKnownDeviceManagerIntegration:
         mock_store.load_devices.return_value = {}
         mock_cleanup_cb = mock.MagicMock()
         mock_notify_cb = mock.MagicMock()
-        
+
         manager = KnownDeviceManager(
             mock_store,
             mock.MagicMock(return_value=True),
             mock_cleanup_cb,
-            mqtt_update_select_callback=mock_notify_cb
+            mqtt_update_select_callback=mock_notify_cb,
         )
-        
+
         # Add device - should trigger save
         manager.add_or_update_device("sensor1", "Sensor 1", ["topic1"])
         assert "sensor1" in manager.known_devices
         assert mock_store.save_devices.called
-        
+
         # Add another device to verify tracking
         mock_store.reset_mock()
         manager.add_or_update_device("sensor2", "Sensor 2", ["topic2"])
         assert mock_store.save_devices.called
-        
+
         # Remove device
         manager.remove_device("sensor1")
         assert "sensor1" not in manager.known_devices
@@ -513,13 +471,11 @@ class TestKnownDeviceManagerIntegration:
         """Multiple devices going through full lifecycle concurrently."""
         mock_store = mock.MagicMock()
         mock_store.load_devices.return_value = {}
-        
+
         manager = KnownDeviceManager(
-            mock_store,
-            mock.MagicMock(return_value=True),
-            mock.MagicMock()
+            mock_store, mock.MagicMock(return_value=True), mock.MagicMock()
         )
-        
+
         errors = []
 
         def device_lifecycle(device_id):
@@ -527,20 +483,17 @@ class TestKnownDeviceManagerIntegration:
                 # Add
                 manager.add_or_update_device(device_id, f"Device {device_id}", "Model")
                 time.sleep(0.001)
-                
+
                 # Update
                 manager.add_or_update_device(device_id, f"Device {device_id} v2", "Model")
                 time.sleep(0.001)
-                
+
                 # Remove
                 manager.remove_device(device_id)
             except Exception as e:
                 errors.append(e)
 
-        threads = [
-            threading.Thread(target=device_lifecycle, args=(f"dev{i}",))
-            for i in range(5)
-        ]
+        threads = [threading.Thread(target=device_lifecycle, args=(f"dev{i}",)) for i in range(5)]
         for t in threads:
             t.start()
         for t in threads:

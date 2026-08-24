@@ -3,6 +3,7 @@ import pytest
 import sensors_system
 import io
 
+
 def test_system_monitor_init_reads_model_file(mocker):
     # Make the devicetree model file exist and include nulls
     fake_model = "Raspberry Pi 4 Model B\x00"
@@ -27,7 +28,9 @@ def test_system_monitor_read_stats_full_success(mocker):
     mon = sensors_system.SystemMonitor()
 
     mocker.patch.object(sensors_system.psutil, "cpu_percent", return_value=12.5)
-    mocker.patch.object(sensors_system.psutil, "virtual_memory", return_value=mocker.Mock(percent=33.3))
+    mocker.patch.object(
+        sensors_system.psutil, "virtual_memory", return_value=mocker.Mock(percent=33.3)
+    )
     mocker.patch.object(sensors_system.shutil, "disk_usage", return_value=(100, 25, 75))
     mocker.patch.object(
         sensors_system.psutil,

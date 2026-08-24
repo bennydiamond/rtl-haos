@@ -1,6 +1,7 @@
 import pytest
 from rtl_manager import is_blocked_device, is_allowed_device
 
+
 def test_blacklist_logic(mocker):
     """
     Verifies that devices are correctly blocked by ID, Model, or Type.
@@ -15,8 +16,8 @@ def test_blacklist_logic(mocker):
 
     # 2. Test Cases that should be BLOCKED (True)
     assert is_blocked_device("12345", "Generic", "weather") is True  # Matches ID wildcard
-    assert is_blocked_device("99999", "EezTire", "pressure") is True # Matches Model wildcard
-    assert is_blocked_device("55555", "Nest", "smoke") is True       # Matches Type exact
+    assert is_blocked_device("99999", "EezTire", "pressure") is True  # Matches Model wildcard
+    assert is_blocked_device("55555", "Nest", "smoke") is True  # Matches Type exact
 
     # 3. Test Cases that should be ALLOWED (False)
     assert is_blocked_device("98765", "Generic", "weather") is False

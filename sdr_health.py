@@ -9,6 +9,7 @@ Alert conditions:
   - USB errors: Device disconnected, busy, or permission denied
   - rtl_433 crash: Segfault, illegal instruction
 """
+
 from __future__ import annotations
 
 import threading
