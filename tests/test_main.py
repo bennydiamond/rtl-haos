@@ -91,41 +91,68 @@ def test_main_smoke_run_exits_cleanly(mocker):
                     "start_thread": lambda self, *a, **k: None,
                 },
             )()
-        def start(self): pass
-        def stop(self): pass
-        def _get_discovery_enabled(self): return self.allow_new_device_discovery
-        def cleanup_device_discovered_topics(self, clean_id): pass
-        def publish_known_devices_select(self): pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def _get_discovery_enabled(self):
+            return self.allow_new_device_discovery
+
+        def cleanup_device_discovered_topics(self, clean_id):
+            pass
+
+        def publish_known_devices_select(self):
+            pass
 
     class DummyKnownStore:
         def __init__(self, path=None):
             self.path = path
-        def load_ids(self): return set()
-        def save_ids(self, ids): pass
+
+        def load_ids(self):
+            return set()
+
+        def save_ids(self, ids):
+            pass
 
     class DummyKnownDeviceManager:
         def __init__(self, *args, **kwargs):
             pass
-        def clear_all_devices(self): pass
-        def get_known_devices(self): return set()
-        def remove_device(self, compound_id): pass
+
+        def clear_all_devices(self):
+            pass
+
+        def get_known_devices(self):
+            return set()
+
+        def remove_device(self, compound_id):
+            pass
 
     class DummyProcessor:
-        def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt
-        def start_throttle_loop(self): return
+        def __init__(self, mqtt, *args, **kwargs):
+            self.mqtt = mqtt
+
+        def start_throttle_loop(self):
+            return
 
     class DummyThread:
         def __init__(self, target=None, args=(), daemon=None):
             self.target = target
             self.args = args
-        def start(self): return
+
+        def start(self):
+            return
 
     # ✅ Patch what main.py actually calls (because of "from X import Y")
     mocker.patch.object(main, "HomeNodeMQTT", DummyMQTT)
     mocker.patch.object(main, "DataProcessor", DummyProcessor)
     mocker.patch.object(main, "KnownDeviceStore", DummyKnownStore)
     mocker.patch.object(main, "KnownDeviceManager", DummyKnownDeviceManager)
-    mocker.patch.object(main, "discover_rtl_devices", return_value=[{"name": "RTL0", "id": "000", "index": 0}])
+    mocker.patch.object(
+        main, "discover_rtl_devices", return_value=[{"name": "RTL0", "id": "000", "index": 0}]
+    )
     mocker.patch.object(main, "rtl_loop", lambda *a, **k: None)
     mocker.patch.object(main, "system_stats_loop", lambda *a, **k: None)
     mocker.patch.object(main, "get_system_mac", return_value="aa:bb:cc:dd:ee:ff")
@@ -140,6 +167,7 @@ def test_main_smoke_run_exits_cleanly(mocker):
 
     # Break the infinite loop in main
     calls = {"n": 0}
+
     def fake_sleep(_):
         calls["n"] += 1
         if calls["n"] >= 2:

@@ -6,7 +6,6 @@ import mqtt_handler
 import config
 
 
-
 def test_on_message_nuking_empty_payload_returns(monkeypatch):
     h, dummy = _make_handler(monkeypatch)
 
@@ -33,12 +32,11 @@ def test_send_sensor_verbose_print_hit(monkeypatch, capsys):
     assert ("-> tx" in out) or ("data" in out)
 
 
-
 class DummyClient:
     def __init__(self, *a, **k):
-        self.published = []      # list[(topic, payload, retain)]
-        self.subscribed = []     # list[topic]
-        self.unsubscribed = []   # list[topic]
+        self.published = []  # list[(topic, payload, retain)]
+        self.subscribed = []  # list[topic]
+        self.unsubscribed = []  # list[topic]
         self.connected = None
         self.loop_started = False
         self.loop_stopped = False
@@ -195,7 +193,9 @@ def test_on_connect_success_subscribes_and_publishes_buttons(monkeypatch):
     h._on_connect(c, None, None, rc=0)
 
     # availability online
-    assert any(t.endswith("/availability") and p == "online" and r is True for (t, p, r) in c.published)
+    assert any(
+        t.endswith("/availability") and p == "online" and r is True for (t, p, r) in c.published
+    )
 
     # command topics set + subscribed
     assert hasattr(h, "nuke_command_topic")
@@ -215,13 +215,33 @@ def test_on_connect_success_subscribes_and_publishes_buttons(monkeypatch):
     assert h.bind_devices_command_topic in c.subscribed
 
     # buttons published
-    assert any(t.startswith("homeassistant/button/rtl_bridge_nuke_T/config") for (t, _, _) in c.published)
-    assert any(t.startswith("homeassistant/button/rtl_bridge_restart_T/config") for (t, _, _) in c.published)
-    assert any(t.startswith("homeassistant/switch/rtl_bridge_discovery_new_devices_T/config") for (t, _, _) in c.published)
-    assert any(t.startswith("homeassistant/button/rtl_bridge_bind_alias_T/config") for (t, _, _) in c.published)
-    assert any(t.startswith("homeassistant/select/rtl_bridge_bind_devices_T/config") for (t, _, _) in c.published)
-    assert any(t.startswith("homeassistant/text/rtl_bridge_alias_name_T/config") for (t, _, _) in c.published)
-    assert any(t == h.discovery_state_topic and p in {"ON", "OFF"} and r is True for (t, p, r) in c.published)
+    assert any(
+        t.startswith("homeassistant/button/rtl_bridge_nuke_T/config") for (t, _, _) in c.published
+    )
+    assert any(
+        t.startswith("homeassistant/button/rtl_bridge_restart_T/config")
+        for (t, _, _) in c.published
+    )
+    assert any(
+        t.startswith("homeassistant/switch/rtl_bridge_discovery_new_devices_T/config")
+        for (t, _, _) in c.published
+    )
+    assert any(
+        t.startswith("homeassistant/button/rtl_bridge_bind_alias_T/config")
+        for (t, _, _) in c.published
+    )
+    assert any(
+        t.startswith("homeassistant/select/rtl_bridge_bind_devices_T/config")
+        for (t, _, _) in c.published
+    )
+    assert any(
+        t.startswith("homeassistant/text/rtl_bridge_alias_name_T/config")
+        for (t, _, _) in c.published
+    )
+    assert any(
+        t == h.discovery_state_topic and p in {"ON", "OFF"} and r is True
+        for (t, p, r) in c.published
+    )
 
 
 def test_on_connect_failure_prints(monkeypatch, capsys):
@@ -237,9 +257,15 @@ def test_on_message_routes_nuke_and_restart(monkeypatch):
 
     called = {"nuke": 0, "restart": 0}
 
-    monkeypatch.setattr(h, "_handle_nuke_press", lambda: called.__setitem__("nuke", called["nuke"] + 1))
+    monkeypatch.setattr(
+        h, "_handle_nuke_press", lambda: called.__setitem__("nuke", called["nuke"] + 1)
+    )
 
-    monkeypatch.setattr(mqtt_handler, "trigger_radio_restart", lambda: called.__setitem__("restart", called["restart"] + 1))
+    monkeypatch.setattr(
+        mqtt_handler,
+        "trigger_radio_restart",
+        lambda: called.__setitem__("restart", called["restart"] + 1),
+    )
 
     msg_nuke = types.SimpleNamespace(topic=h.nuke_command_topic, payload=b"PRESS")
     h._on_message(c, None, msg_nuke)
@@ -258,12 +284,16 @@ def test_on_message_discovery_toggle_switch(monkeypatch):
     msg_off = types.SimpleNamespace(topic=h.discovery_command_topic, payload=b"OFF")
     h._on_message(c, None, msg_off)
     assert h.allow_new_device_discovery is False
-    assert any(t == h.discovery_state_topic and p == "OFF" and r is True for (t, p, r) in c.published)
+    assert any(
+        t == h.discovery_state_topic and p == "OFF" and r is True for (t, p, r) in c.published
+    )
 
     msg_on = types.SimpleNamespace(topic=h.discovery_command_topic, payload=b"ON")
     h._on_message(c, None, msg_on)
     assert h.allow_new_device_discovery is True
-    assert any(t == h.discovery_state_topic and p == "ON" and r is True for (t, p, r) in c.published)
+    assert any(
+        t == h.discovery_state_topic and p == "ON" and r is True for (t, p, r) in c.published
+    )
 
 
 def test_on_message_known_devices_dropdown_select(monkeypatch):
@@ -274,7 +304,10 @@ def test_on_message_known_devices_dropdown_select(monkeypatch):
     h._on_message(c, None, msg)
 
     assert h.selected_device_to_remove == "rtl433_Test_123"
-    assert any(t == h.known_devices_state_topic and p == "rtl433_Test_123" and r is True for (t, p, r) in c.published)
+    assert any(
+        t == h.known_devices_state_topic and p == "rtl433_Test_123" and r is True
+        for (t, p, r) in c.published
+    )
 
 
 def test_on_message_remove_device_button(monkeypatch):
@@ -283,14 +316,17 @@ def test_on_message_remove_device_button(monkeypatch):
 
     called_with = []
     h.remove_device_callback = lambda t: called_with.append(t)
-    
+
     h.selected_device_to_remove = "rtl433_Test_123"
     msg = types.SimpleNamespace(topic=h.remove_device_command_topic, payload=b"PRESS")
     h._on_message(c, None, msg)
 
     assert called_with == ["rtl433_Test_123"]
     assert h.selected_device_to_remove == "No device selected"
-    assert any(t == h.known_devices_state_topic and p == "No device selected" and r is True for (t, p, r) in c.published)
+    assert any(
+        t == h.known_devices_state_topic and p == "No device selected" and r is True
+        for (t, p, r) in c.published
+    )
 
 
 def test_on_message_bind_devices_dropdown_select(monkeypatch):
@@ -301,7 +337,10 @@ def test_on_message_bind_devices_dropdown_select(monkeypatch):
     h._on_message(c, None, msg)
 
     assert h.selected_device_to_bind == "rtl433_Test_123"
-    assert any(t == h.bind_devices_state_topic and p == "rtl433_Test_123" and r is True for (t, p, r) in c.published)
+    assert any(
+        t == h.bind_devices_state_topic and p == "rtl433_Test_123" and r is True
+        for (t, p, r) in c.published
+    )
 
 
 def test_on_message_alias_name_text_input(monkeypatch):
@@ -312,7 +351,10 @@ def test_on_message_alias_name_text_input(monkeypatch):
     h._on_message(c, None, msg)
 
     assert h.alias_name_to_bind == "temp_sensor"
-    assert any(t == h.bind_alias_name_state_topic and p == "temp_sensor" and r is True for (t, p, r) in c.published)
+    assert any(
+        t == h.bind_alias_name_state_topic and p == "temp_sensor" and r is True
+        for (t, p, r) in c.published
+    )
 
 
 def test_on_message_bind_alias_button(monkeypatch):
@@ -330,7 +372,9 @@ def test_on_message_bind_alias_button(monkeypatch):
     assert called_with == [("temp_sensor", "rtl433_Test_123")]
     assert h.selected_device_to_bind == "No device selected"
     assert h.alias_name_to_bind == ""
-    assert any(t == h.bind_alias_name_state_topic and p == "" and r is True for (t, p, r) in c.published)
+    assert any(
+        t == h.bind_alias_name_state_topic and p == "" and r is True for (t, p, r) in c.published
+    )
 
 
 def test_bind_alias_button_uses_lookup_for_alias_display_name(monkeypatch):
@@ -341,7 +385,9 @@ def test_bind_alias_button_uses_lookup_for_alias_display_name(monkeypatch):
     called_with = []
     h.bind_alias_callback = lambda alias, device: called_with.append((alias, device)) or True
 
-    msg_select = types.SimpleNamespace(topic=h.bind_devices_command_topic, payload=b"cong_lateur_vertical")
+    msg_select = types.SimpleNamespace(
+        topic=h.bind_devices_command_topic, payload=b"cong_lateur_vertical"
+    )
     h._on_message(c, None, msg_select)
 
     h.alias_name_to_bind = "new_alias"
@@ -349,6 +395,7 @@ def test_bind_alias_button_uses_lookup_for_alias_display_name(monkeypatch):
     h._on_message(c, None, msg_bind)
 
     assert called_with == [("new_alias", "rtl433_Acurite_4471")]
+
 
 def test_on_message_before_connect_is_caught(monkeypatch, capsys):
     h, c = _make_handler(monkeypatch)
@@ -374,12 +421,16 @@ def test_nuke_scan_deletes_rtl_haos_and_skips_button_topics(monkeypatch):
 
     # rtl-haos manufacturer but button topic -> MUST skip
     payload = json.dumps({"device": {"manufacturer": "rtl-haos"}}).encode("utf-8")
-    msg_skip = types.SimpleNamespace(topic="homeassistant/button/rtl_bridge_nuke_T/config", payload=payload)
+    msg_skip = types.SimpleNamespace(
+        topic="homeassistant/button/rtl_bridge_nuke_T/config", payload=payload
+    )
     h._on_message(c, None, msg_skip)
     assert not any(t == msg_skip.topic and p == "" and r is True for (t, p, r) in c.published)
 
     # normal rtl-haos entity -> delete publish retained empty payload
-    msg_del = types.SimpleNamespace(topic="homeassistant/sensor/rtl_haos/some_entity/config", payload=payload)
+    msg_del = types.SimpleNamespace(
+        topic="homeassistant/sensor/rtl_haos/some_entity/config", payload=payload
+    )
     h._on_message(c, None, msg_del)
     assert any(t == msg_del.topic and p == "" and r is True for (t, p, r) in c.published)
 
@@ -442,25 +493,29 @@ def test_nuke_all_and_stop_scan(monkeypatch):
     assert called == [True]
 
     # availability restored online and buttons republished
-    assert any(t.endswith("/availability") and p == "online" and r is True for (t, p, r) in c.published)
-    assert any(t.startswith("homeassistant/button/rtl_bridge_nuke_T/config") for (t, _, _) in c.published)
-    assert any(t.startswith("homeassistant/button/rtl_bridge_restart_T/config") for (t, _, _) in c.published)
+    assert any(
+        t.endswith("/availability") and p == "online" and r is True for (t, p, r) in c.published
+    )
+    assert any(
+        t.startswith("homeassistant/button/rtl_bridge_nuke_T/config") for (t, _, _) in c.published
+    )
+    assert any(
+        t.startswith("homeassistant/button/rtl_bridge_restart_T/config")
+        for (t, _, _) in c.published
+    )
 
 
 def test_cleanup_device_discovered_topics(monkeypatch):
     h, c = _make_handler(monkeypatch)
-    
+
     h.discovery_published.add("dev1_temp")
     h._discovery_sig["dev1_temp"] = "sig"
     h.last_sent_values["dev1_temp"] = "20"
     h.tracked_devices.add("Device1")
-    
-    topics = [
-        "homeassistant/sensor/dev1_temp/config",
-        "home/rtl_devices/rtl433_Model_dev1/temp"
-    ]
+
+    topics = ["homeassistant/sensor/dev1_temp/config", "home/rtl_devices/rtl433_Model_dev1/temp"]
     h.cleanup_device_discovered_topics(topics, "Device1")
-    
+
     assert any(t == topics[0] and p == "" and r is True for (t, p, r) in c.published)
     assert any(t == topics[1] and p == "" and r is True for (t, p, r) in c.published)
     assert "dev1_temp" not in h.discovery_published
@@ -593,7 +648,6 @@ def test_send_sensor_value_none_and_verbose_and_no_resend(monkeypatch, capsys):
     out = capsys.readouterr().out.lower()
     assert ("-> tx" in out) or ("data" in out)
 
-
     state_topic = "home/rtl_devices/rtl433_NotBridge_deadbeef/door"
     assert any(t == state_topic and p == "OPEN" and r is True for (t, p, r) in c.published)
 
@@ -619,13 +673,17 @@ def test_battery_ok_publishes_binary_sensor_and_inverts_state(monkeypatch):
 
     # migration helper deletes any older numeric sensor config topic
     assert any(
-        t.startswith("homeassistant/sensor/rtl433_NotBridge_deadbeef_battery_ok_T/config") and p == "" and r is True
+        t.startswith("homeassistant/sensor/rtl433_NotBridge_deadbeef_battery_ok_T/config")
+        and p == ""
+        and r is True
         for (t, p, r) in c.published
     )
 
     # Discovery should be under binary_sensor and include device_class battery
     topic, payload = _last_published_json(c, "homeassistant/binary_sensor/")
-    assert topic.startswith("homeassistant/binary_sensor/rtl433_NotBridge_deadbeef_battery_ok_T/config")
+    assert topic.startswith(
+        "homeassistant/binary_sensor/rtl433_NotBridge_deadbeef_battery_ok_T/config"
+    )
     assert payload.get("device_class") == "battery"
     assert payload.get("payload_on") == "ON"
     assert payload.get("payload_off") == "OFF"
@@ -653,12 +711,16 @@ def test_start_success_and_failure_and_stop(monkeypatch):
     h.stop()
     assert c.loop_stopped is True
     assert c.disconnected is True
-    assert any(t.endswith("/availability") and p == "offline" and r is True for (t, p, r) in c.published)
+    assert any(
+        t.endswith("/availability") and p == "offline" and r is True for (t, p, r) in c.published
+    )
 
     # start failure -> SystemExit
     h2, c2 = _make_handler(monkeypatch)
+
     def boom_connect(_host, _port):
         raise OSError("no broker")
+
     c2.connect = boom_connect
     with pytest.raises(SystemExit):
         h2.start()

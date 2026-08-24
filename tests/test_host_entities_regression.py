@@ -8,6 +8,7 @@ class ImmediateThread:
     Deterministic threading for unit tests:
     runs the target synchronously when .start() is called.
     """
+
     def __init__(self, target=None, args=(), kwargs=None, daemon=None):
         self._target = target
         self._args = args
@@ -66,15 +67,28 @@ def test_main_sets_slot_for_missing_ids_in_manual_mode(mocker):
                     "start_thread": lambda self, *a, **k: None,
                 },
             )()
-        def start(self): return
-        def stop(self): return
-        def _get_discovery_enabled(self): return True
-        def cleanup_device_discovered_topics(self, clean_id): pass
-        def publish_known_devices_select(self): pass
+
+        def start(self):
+            return
+
+        def stop(self):
+            return
+
+        def _get_discovery_enabled(self):
+            return True
+
+        def cleanup_device_discovered_topics(self, clean_id):
+            pass
+
+        def publish_known_devices_select(self):
+            pass
 
     class DummyProcessor:
-        def __init__(self, mqtt, *args, **kwargs): self.mqtt = mqtt
-        def start_throttle_loop(self): return
+        def __init__(self, mqtt, *args, **kwargs):
+            self.mqtt = mqtt
+
+        def start_throttle_loop(self):
+            return
 
     mocker.patch.object(main, "HomeNodeMQTT", DummyMQTT)
     mocker.patch.object(main, "DataProcessor", DummyProcessor)
@@ -151,7 +165,9 @@ def test_rtl_loop_publishes_host_radio_status_entity_on_start(mocker):
             if sensor_id == "SYSID" and str(field).startswith("radio_status"):
                 status_calls.append(c)
 
-    assert status_calls, "rtl_loop must call mqtt_handler.send_sensor(SYSID, 'radio_status_*', ...) at least once"
+    assert status_calls, (
+        "rtl_loop must call mqtt_handler.send_sensor(SYSID, 'radio_status_*', ...) at least once"
+    )
 
 
 def test_radio_status_is_republished_after_nuke_scan(mocker, mock_config):
@@ -193,7 +209,11 @@ def test_radio_status_is_republished_after_nuke_scan(mocker, mock_config):
         is_rtl=False,
     )
 
-    first_count = sum(1 for call in fake_client.publish.call_args_list if call.args and call.args[0] == config_topic)
+    first_count = sum(
+        1
+        for call in fake_client.publish.call_args_list
+        if call.args and call.args[0] == config_topic
+    )
     assert first_count >= 1, "Expected initial discovery publish for radio_status"
 
     # Simulate NUKE finishing (clears discovery_published + last_sent_values + tracked_devices)
@@ -209,5 +229,11 @@ def test_radio_status_is_republished_after_nuke_scan(mocker, mock_config):
         is_rtl=False,
     )
 
-    second_count = sum(1 for call in fake_client.publish.call_args_list if call.args and call.args[0] == config_topic)
-    assert second_count >= 2, "After NUKE, radio_status discovery must be re-published on next status send"
+    second_count = sum(
+        1
+        for call in fake_client.publish.call_args_list
+        if call.args and call.args[0] == config_topic
+    )
+    assert second_count >= 2, (
+        "After NUKE, radio_status discovery must be re-published on next status send"
+    )

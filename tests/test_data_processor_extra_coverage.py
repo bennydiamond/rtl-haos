@@ -24,18 +24,18 @@ class DummyMQTT:
         )
         compound_id = f"rtl433_{model}_{clean_id}"
         self.discovered_device_ids.add(compound_id)
-        
+
         # Return topics only if it's a newly seen field for this device
         field_key = f"{compound_id}_{field}"
         is_new_topic = field_key not in self.published_fields
         if is_new_topic:
             self.published_fields.add(field_key)
-        
+
         return {
             "accepted": True,
             "published": True,
             "reason": "published",
-            "topics": [f"homeassistant/sensor/{field_key}/config"] if is_new_topic else []
+            "topics": [f"homeassistant/sensor/{field_key}/config"] if is_new_topic else [],
         }
 
 
@@ -148,8 +148,11 @@ def test_start_throttle_loop_flushes_all_branches(monkeypatch, capsys):
             },
             "dev_mean_error": {
                 "__meta__": {"name": "DevE", "model": "M", "radio": "RTL_E", "freq": "433.92M"},
-                "weird": [1.0, "BAD"],  # numeric first elem, but mean() raises -> except -> last value
-                "empty": [],            # empty list -> continue
+                "weird": [
+                    1.0,
+                    "BAD",
+                ],  # numeric first elem, but mean() raises -> except -> last value
+                "empty": [],  # empty list -> continue
             },
         }
 
@@ -169,11 +172,20 @@ def test_start_throttle_loop_flushes_all_branches(monkeypatch, capsys):
     # Verify sends happened
     assert mqtt.calls, "Expected send_sensor calls from flush"
     # temp averaged to int(1)
-    assert any(c["clean_id"] == "dev_float_int" and c["field"] == "temp" and c["value"] == 1 for c in mqtt.calls)
+    assert any(
+        c["clean_id"] == "dev_float_int" and c["field"] == "temp" and c["value"] == 1
+        for c in mqtt.calls
+    )
     # string keeps last
-    assert any(c["clean_id"] == "dev_string" and c["field"] == "status" and c["value"] == "CLOSED" for c in mqtt.calls)
+    assert any(
+        c["clean_id"] == "dev_string" and c["field"] == "status" and c["value"] == "CLOSED"
+        for c in mqtt.calls
+    )
     # mean error falls back to last
-    assert any(c["clean_id"] == "dev_mean_error" and c["field"] == "weird" and c["value"] == "BAD" for c in mqtt.calls)
+    assert any(
+        c["clean_id"] == "dev_mean_error" and c["field"] == "weird" and c["value"] == "BAD"
+        for c in mqtt.calls
+    )
 
     out = capsys.readouterr().out
     # Consolidated heartbeat log should exist and include bracketed freq for non-Unknown
@@ -237,7 +249,10 @@ def test_throttle_battery_ok_uses_last_value_not_mean(monkeypatch):
     with pytest.raises(InterruptedError):
         dp.start_throttle_loop()
 
-    assert any(c["clean_id"] == "dev_batt" and c["field"] == "battery_ok" and c["value"] == 1 for c in mqtt.calls)
+    assert any(
+        c["clean_id"] == "dev_batt" and c["field"] == "battery_ok" and c["value"] == 1
+        for c in mqtt.calls
+    )
 
 
 def test_dispatch_reading_persists_new_known_device(monkeypatch):
@@ -264,7 +279,9 @@ def test_dispatch_reading_merges_new_sensor_on_existing_device(monkeypatch):
     dp = data_processor.DataProcessor(mqtt, known_device_manager=manager)
 
     dp.dispatch_reading("dev1", "temperature", 20.0, "Dev", "Model")
-    assert manager.last_added_topics == ["homeassistant/sensor/rtl433_Model_dev1_temperature/config"]
+    assert manager.last_added_topics == [
+        "homeassistant/sensor/rtl433_Model_dev1_temperature/config"
+    ]
 
     # Second reading (Humidity) on the SAME device -> manager should receive the new topic
     dp.dispatch_reading("dev1", "humidity", 50, "Dev", "Model")

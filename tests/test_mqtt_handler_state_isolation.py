@@ -23,9 +23,9 @@ class TestTrackedDevicesIsolation:
         """_track_device adds device to tracked set."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         handler._track_device("device1")
-        
+
         with handler._state_lock:
             assert "device1" in handler.tracked_devices
 
@@ -33,10 +33,10 @@ class TestTrackedDevicesIsolation:
         """_untrack_device removes device from set."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         handler._track_device("device1")
         handler._untrack_device("device1")
-        
+
         with handler._state_lock:
             assert "device1" not in handler.tracked_devices
 
@@ -44,13 +44,13 @@ class TestTrackedDevicesIsolation:
         """_reset_tracked_devices clears all tracked devices."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         handler._track_device("device1")
         handler._track_device("device2")
         handler._track_device("device3")
-        
+
         handler._reset_tracked_devices()
-        
+
         with handler._state_lock:
             assert len(handler.tracked_devices) == 0
 
@@ -58,10 +58,10 @@ class TestTrackedDevicesIsolation:
         """track_device access is protected by _state_lock."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         # Verify we can access safely
         handler._track_device("dev1")
-        
+
         # Verify lock is being used (we can read with lock)
         with handler._state_lock:
             assert "dev1" in handler.tracked_devices
@@ -70,11 +70,11 @@ class TestTrackedDevicesIsolation:
         """Sequence of track/untrack operations."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         handler._track_device("dev1")
         handler._track_device("dev2")
         assert len([d for d in handler.tracked_devices]) >= 2
-        
+
         handler._untrack_device("dev1")
         with handler._state_lock:
             assert "dev1" not in handler.tracked_devices
@@ -89,51 +89,51 @@ class TestDiscoveryStateIsolation:
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
         handler.start()
-        
+
         # Set some state
         handler._set_discovery_enabled(True)
         handler._set_last_sent_value("key1", "val1")
-        
+
         # Reset via method
         handler._reset_discovery_state()
-        
+
         with handler._state_lock:
             assert len(handler.discovery_published) == 0
             assert len(handler.last_sent_values) == 0
-        
+
         handler.stop()
 
     def test_get_last_sent_value_returns_none_for_missing(self, mocker):
         """_get_last_sent_value returns None for missing key."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         value = handler._get_last_sent_value("nonexistent")
-        
+
         assert value is None
 
     def test_get_set_last_sent_value(self, mocker):
         """_set_last_sent_value and _get_last_sent_value work together."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         handler._set_last_sent_value("sensor1", 42.5)
         value = handler._get_last_sent_value("sensor1")
-        
+
         assert value == 42.5
 
     def test_set_discovery_enabled_persists(self, mocker):
         """_set_discovery_enabled updates state."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         handler._set_discovery_enabled(True)
-        
+
         with handler._state_lock:
             assert handler.allow_new_device_discovery is True
-        
+
         handler._set_discovery_enabled(False)
-        
+
         with handler._state_lock:
             assert handler.allow_new_device_discovery is False
 
@@ -145,12 +145,12 @@ class TestStateLockConsolidation:
         """Single _state_lock protects both tracked and discovery state."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         # Both operations use same lock
         handler._track_device("dev1")
         handler._set_discovery_enabled(True)
         handler._set_last_sent_value("key1", "val1")
-        
+
         # All should be accessible via same lock
         with handler._state_lock:
             assert "dev1" in handler.tracked_devices
@@ -162,7 +162,7 @@ class TestStateLockConsolidation:
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
         handler.start()
-        
+
         errors = []
         results = {"tracks": 0, "discoveries": 0}
         lock = threading.Lock()
@@ -207,7 +207,7 @@ class TestStateLockConsolidation:
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
         handler.start()
-        
+
         errors = []
         read_results = []
         lock = threading.Lock()
@@ -216,10 +216,12 @@ class TestStateLockConsolidation:
             try:
                 for _ in range(10):
                     with handler._state_lock:
-                        read_results.append({
-                            "tracked": len(handler.tracked_devices),
-                            "values": len(handler.last_sent_values),
-                        })
+                        read_results.append(
+                            {
+                                "tracked": len(handler.tracked_devices),
+                                "values": len(handler.last_sent_values),
+                            }
+                        )
                     time.sleep(0.001)
             except Exception as e:
                 errors.append(e)
@@ -257,7 +259,7 @@ class TestDiscoveryLockAlias:
         """discovery_lock is alias for _state_lock."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         # They should be the same object
         assert handler.discovery_lock is handler._state_lock
 
@@ -265,13 +267,13 @@ class TestDiscoveryLockAlias:
         """Can access discovery_published via discovery_lock."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         handler._set_last_sent_value("sensor1", 42.5)
-        
+
         # Access via discovery_lock (for backward compatibility)
         with handler.discovery_lock:
             value = handler.last_sent_values.get("sensor1")
-        
+
         assert value == 42.5
 
 
@@ -283,7 +285,7 @@ class TestConcurrentStateOperations:
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
         handler.start()
-        
+
         errors = []
 
         def cycle_track_untrack(device_id):
@@ -297,8 +299,7 @@ class TestConcurrentStateOperations:
                 errors.append(e)
 
         threads = [
-            threading.Thread(target=cycle_track_untrack, args=(f"dev{i}",))
-            for i in range(5)
+            threading.Thread(target=cycle_track_untrack, args=(f"dev{i}",)) for i in range(5)
         ]
         for t in threads:
             t.start()
@@ -314,7 +315,7 @@ class TestConcurrentStateOperations:
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
         handler.start()
-        
+
         errors = []
         active_count = [0]
         lock = threading.Lock()
@@ -355,7 +356,7 @@ class TestConcurrentStateOperations:
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
         handler.start()
-        
+
         errors = []
 
         def set_values():
@@ -394,7 +395,7 @@ class TestLockDeadlockPrevention:
         """RLock allows same thread to reacquire."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         # _state_lock should be RLock (reentrant)
         assert isinstance(handler._state_lock, type(threading.RLock()))
 
@@ -402,7 +403,7 @@ class TestLockDeadlockPrevention:
         """Nested operations within same lock don't deadlock."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         # Should not deadlock
         with handler._state_lock:
             handler._track_device("dev1")
@@ -416,14 +417,14 @@ class TestLockDeadlockPrevention:
         """Lock is released even if exception occurs."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         try:
             with handler._state_lock:
                 handler._track_device("dev1")
                 raise RuntimeError("Expected error")
         except RuntimeError:
             pass
-        
+
         # Lock should be released, able to acquire again
         with handler._state_lock:
             assert "dev1" in handler.tracked_devices

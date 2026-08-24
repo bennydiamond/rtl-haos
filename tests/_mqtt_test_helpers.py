@@ -60,7 +60,9 @@ def last_discovery_payload(
     return json.loads(payload)
 
 
-def assert_float_str(value: str, expected: float, *, rel: float = 1e-9, abs_tol: float = 1e-9) -> None:
+def assert_float_str(
+    value: str, expected: float, *, rel: float = 1e-9, abs_tol: float = 1e-9
+) -> None:
     """Parse a numeric MQTT payload and compare with tolerance.
 
     This avoids brittle tests that depend on exact float->str formatting.

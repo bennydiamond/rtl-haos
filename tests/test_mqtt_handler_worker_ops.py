@@ -36,9 +36,7 @@ class TestWorkerOps:
         handler._worker_mqtt_publish(item)
 
         # Verify paho client was called
-        handler.client.publish.assert_called_once_with(
-            "test/topic", "test_payload", retain=False
-        )
+        handler.client.publish.assert_called_once_with("test/topic", "test_payload", retain=False)
         handler.stop()
 
     def test_worker_mqtt_publish_with_result_queue(self, mocker):
@@ -239,9 +237,7 @@ class TestEnqueueMqttIoDispatcher:
 
         # Should have executed and returned result
         assert result is True
-        handler.client.publish.assert_called_once_with(
-            "test/topic", "payload", retain=True
-        )
+        handler.client.publish.assert_called_once_with("test/topic", "payload", retain=True)
         handler.stop()
 
     def test_enqueue_wait_timeout_and_fallback(self, mocker):
@@ -292,9 +288,7 @@ class TestClientWrappers:
         result = handler._client_publish("my/topic", "my_payload", retain=False, wait=True)
 
         assert result is True
-        handler.client.publish.assert_called_once_with(
-            "my/topic", "my_payload", retain=False
-        )
+        handler.client.publish.assert_called_once_with("my/topic", "my_payload", retain=False)
         handler.stop()
 
     def test_client_publish_wrapper_with_retain(self, mocker):
@@ -358,11 +352,11 @@ class TestIntegration:
         """Worker thread processes subscribe operations correctly."""
         mocker.patch("mqtt_handler.mqtt.Client")
         handler = HomeNodeMQTT()
-        
+
         # Spy on _client_subscribe to verify it's being called
         spy_client_subscribe = mocker.spy(handler, "_client_subscribe")
-        
-        # Manually call _client_subscribe with wait=True to ensure execution 
+
+        # Manually call _client_subscribe with wait=True to ensure execution
         result = handler._client_subscribe("test/command/+", wait=True)
         assert result is True
         assert spy_client_subscribe.called

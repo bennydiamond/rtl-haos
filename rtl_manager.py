@@ -3,6 +3,7 @@ FILE: rtl_manager.py
 DESCRIPTION:
   Manages the 'rtl_433' subprocess interactions.
 """
+
 import subprocess
 import json
 import time
@@ -19,6 +20,8 @@ from typing import Optional
 
 import config
 from utils import clean_mac, calculate_dew_point
+from sdr_health import get_health_monitor
+
 
 # --- Process Tracking ---
 class ProcessRegistry:
@@ -121,7 +124,6 @@ def _parse_extra_args(value) -> list[str]:
         return [p for p in s.split(" ") if p]
 
 
-
 # --- rtl_433 passthrough override helpers ---
 # We treat any option present in global RTL_433_ARGS as an override for the same option
 # coming from per-radio defaults or per-radio passthrough args.
@@ -132,8 +134,40 @@ def _parse_extra_args(value) -> list[str]:
 # Best-effort list of rtl_433 options that consume a following value token.
 # (We only use this for filtering overridden options so we don't leave "dangling" values.)
 _RTL433_OPTIONS_TAKE_VALUE = {
-    "-a","-A","-b","-c","-C","-d","-D","-e","-f","-F","-g","-H","-k","-m","-M","-n","-p",
-    "-q","-r","-R","-s","-S","-t","-T","-u","-U","-V","-W","-x","-X","-y","-Y","-z","-Z",
+    "-a",
+    "-A",
+    "-b",
+    "-c",
+    "-C",
+    "-d",
+    "-D",
+    "-e",
+    "-f",
+    "-F",
+    "-g",
+    "-H",
+    "-k",
+    "-m",
+    "-M",
+    "-n",
+    "-p",
+    "-q",
+    "-r",
+    "-R",
+    "-s",
+    "-S",
+    "-t",
+    "-T",
+    "-u",
+    "-U",
+    "-V",
+    "-W",
+    "-x",
+    "-X",
+    "-y",
+    "-Y",
+    "-z",
+    "-Z",
 }
 
 
@@ -179,7 +213,9 @@ def _argv_option_map(argv: list[str]) -> dict[str, list[list[str]]]:
     return out
 
 
-def _filter_overridden_options(argv: list[str], override_keys: set[str]) -> tuple[list[str], set[str]]:
+def _filter_overridden_options(
+    argv: list[str], override_keys: set[str]
+) -> tuple[list[str], set[str]]:
     """Remove any options (and their value tokens) whose key appears in override_keys."""
     removed: set[str] = set()
     filtered: list[str] = []
@@ -209,6 +245,7 @@ def _format_override_summary(key: str, local_map: dict, global_map: dict) -> str
     """Compact summary for an overridden option for log warnings."""
     loc = local_map.get(key, [])
     glob = global_map.get(key, [])
+
     # Value preview (first occurrence's first value, if any)
     def _preview(v):
         if not v:
@@ -244,15 +281,23 @@ def _ensure_rtl433_outputs(cmd: list[str], *, radio_label: str, global_map: dict
 
     if not has_json:
         # If user specified -F globally but not json, call that out.
-        if "-F" in global_map and all((not v or (v[0].lower() != "json")) for v in global_map.get("-F", [])):
-            print(f"WARNING: [OVERRIDE]: rtl_433_args sets -F without 'json' for {radio_label}; RTL-HAOS will add '-F json' to remain functional.")
+        if "-F" in global_map and all(
+            (not v or (v[0].lower() != "json")) for v in global_map.get("-F", [])
+        ):
+            print(
+                f"WARNING: [OVERRIDE]: rtl_433_args sets -F without 'json' for {radio_label}; RTL-HAOS will add '-F json' to remain functional."
+            )
         cmd.extend(["-F", "json"])
 
     # Default metadata: add '-M level' if user didn't specify any -M
     if "-M" not in opt_map:
         cmd.extend(["-M", "level"])
+        # Also add '-M time' if rtl_publish_timestamps is enabled
+        if getattr(config, "RTL_PUBLISH_TIMESTAMPS", False):
+            cmd.extend(["-M", "time"])
 
     return cmd
+
 
 def _resolve_config_path(path_str: str) -> str:
     """Resolve an rtl_433 config path.
@@ -298,10 +343,13 @@ def _write_inline_config(inline: str, radio_name: str, radio_id: str) -> str:
     if not content.strip():
         return ""
 
-    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in (radio_name or "radio").lower())
+    safe = "".join(
+        ch if ch.isalnum() or ch in "._-" else "_" for ch in (radio_name or "radio").lower()
+    )
 
     try:
         import tempfile
+
         # Ensure the filename still starts with /tmp/rtl_433_ so tests and tooling can rely on it.
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -418,6 +466,7 @@ def build_rtl_433_command(radio_config: dict) -> list[str]:
         parsed: list[int] = []
         if raw:
             import re
+
             for tok in re.split(r"[\s,]+", raw):
                 if not tok:
                     continue
@@ -441,7 +490,9 @@ def build_rtl_433_command(radio_config: dict) -> list[str]:
         filtered_argv, removed = _filter_overridden_options(local_argv, override_keys)
 
         if removed:
-            parts = ", ".join(_format_override_summary(k, local_map, global_map) for k in sorted(removed))
+            parts = ", ".join(
+                _format_override_summary(k, local_map, global_map) for k in sorted(removed)
+            )
             print(f"WARNING: [OVERRIDE]: rtl_433_args overrides {parts} for {radio_label}.")
 
         cmd = [cmd[0]] + filtered_argv
@@ -539,6 +590,8 @@ def flatten(d, sep="_") -> dict:
 
     recurse(d)
     return obj
+
+
 def _debug_dump_packet(
     *,
     raw_line: str,
@@ -623,7 +676,9 @@ def _debug_dump_packet(
                 )
 
         # SCM / ERT: consumption -> Consumption
-        if (("SCM" in (model or "")) or ("ERT" in (model or ""))) and (data_raw or {}).get("consumption") is not None:
+        if (("SCM" in (model or "")) or ("ERT" in (model or ""))) and (data_raw or {}).get(
+            "consumption"
+        ) is not None:
             planned.append(
                 {
                     "field": "Consumption",
@@ -640,7 +695,9 @@ def _debug_dump_packet(
         if t_c is not None and (data_raw or {}).get("humidity") is not None:
             dp_f = calculate_dew_point(t_c, (data_raw or {}).get("humidity"))
             if dp_f is not None:
-                planned.append({"field": "dew_point", "value": dp_f, "source": "derived: dew_point"})
+                planned.append(
+                    {"field": "dew_point", "value": dp_f, "source": "derived: dew_point"}
+                )
     except Exception:
         # Debug mode should never break the radio loop
         pass
@@ -651,7 +708,9 @@ def _debug_dump_packet(
             continue
 
         if key in ["temperature_C", "temp_C"] and isinstance(value, (int, float)):
-            planned.append({"field": "temperature", "value": round(value * 1.8 + 32.0, 1), "source": key})
+            planned.append(
+                {"field": "temperature", "value": round(value * 1.8 + 32.0, 1), "source": key}
+            )
         elif key in ["temperature_F", "temp_F", "temperature"] and isinstance(value, (int, float)):
             planned.append({"field": "temperature", "value": value, "source": key})
         else:
@@ -697,7 +756,9 @@ def _debug_dump_packet(
         print(f"[JSONDUMP] {prefix} {field} = {_fmt(value)}  <= {source}  {meta_s}")
 
     if missing:
-        print(f"[JSONDUMP] unsupported fields missing FIELD_META ({len(missing)}): {', '.join(sorted(missing))}")
+        print(
+            f"[JSONDUMP] unsupported fields missing FIELD_META ({len(missing)}): {', '.join(sorted(missing))}"
+        )
         print("[JSONDUMP] FIELD_META stubs (paste into field_meta.py):")
         for f in sorted(missing):
             friendly = _default_friendly(f)
@@ -722,7 +783,9 @@ def is_blocked_device(clean_id: str, model: str, dev_type: str) -> bool:
     return False
 
 
-def is_allowed_device(clean_id: str, model: str, dev_type: str, raw_id: Optional[object] = None) -> bool:
+def is_allowed_device(
+    clean_id: str, model: str, dev_type: str, raw_id: Optional[object] = None
+) -> bool:
     """Whitelist allow-list.
 
     If DEVICE_WHITELIST is empty, everything is allowed.
@@ -809,7 +872,6 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
     if radio_name and str(radio_name).strip() and str(radio_name).strip().lower() != "unknown":
         status_friendly = f"{radio_name} Status"
 
-
     # Build Command (honors rtl_433 passthrough options)
     cmd = build_rtl_433_command(radio_config)
 
@@ -825,7 +887,9 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
     print(f"[STARTUP] rtl_433 cmd [{radio_name} id={radio_id}]: {_format_cmd(cmd)}")
 
     # Ensure the entity exists even if no packets arrive.
-    _publish_radio_status(mqtt_handler, sys_id, sys_model, status_field, "Scanning...", friendly_name=status_friendly)
+    _publish_radio_status(
+        mqtt_handler, sys_id, sys_model, status_field, "Scanning...", friendly_name=status_friendly
+    )
 
     last_online_mark = 0.0
     last_error_line = None
@@ -834,7 +898,14 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
     while True:
         process = None
         try:
-            _publish_radio_status(mqtt_handler, sys_id, sys_model, status_field, "Rebooting...", friendly_name=status_friendly)
+            _publish_radio_status(
+                mqtt_handler,
+                sys_id,
+                sys_model,
+                status_field,
+                "Rebooting...",
+                friendly_name=status_friendly,
+            )
 
             process = subprocess.Popen(
                 cmd,
@@ -848,7 +919,14 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
             )
             ACTIVE_PROCESSES.append(process)
 
-            _publish_radio_status(mqtt_handler, sys_id, sys_model, status_field, "Scanning...", friendly_name=status_friendly)
+            _publish_radio_status(
+                mqtt_handler,
+                sys_id,
+                sys_model,
+                status_field,
+                "Scanning...",
+                friendly_name=status_friendly,
+            )
 
             empty_reads = 0
 
@@ -875,8 +953,6 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                 if not raw:
                     continue
 
-
-
                 try:
                     data = json.loads(raw)
 
@@ -887,6 +963,10 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                         except Exception:
                             data_raw = None
 
+                    # Record health: valid data received
+                    health = get_health_monitor()
+                    health.record_data_received(radio_name)
+                    health.clear_error(radio_name)
 
                     # Mark online once we see valid JSON
                     now = time.time()
@@ -906,7 +986,12 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                         if last_online_mark == 0.0:
                             last_online_mark = now
                             _publish_radio_status(
-                                mqtt_handler, sys_id, sys_model, status_field, "Online", friendly_name=status_friendly
+                                mqtt_handler,
+                                sys_id,
+                                sys_model,
+                                status_field,
+                                "Online",
+                                friendly_name=status_friendly,
                             )
 
                     last_error_line = None
@@ -927,14 +1012,26 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                     if "Neptune-R900" in model and data.get("consumption") is not None:
                         real_val = float(data["consumption"]) / 10.0
                         data_processor.dispatch_reading(
-                            clean_id, "meter_reading", real_val, dev_name, model, radio_name=radio_name, radio_freq=freq_display
+                            clean_id,
+                            "meter_reading",
+                            real_val,
+                            dev_name,
+                            model,
+                            radio_name=radio_name,
+                            radio_freq=freq_display,
                         )
                         del data["consumption"]
 
                     # SCM / ERT Meters
                     if ("SCM" in model or "ERT" in model) and data.get("consumption") is not None:
                         data_processor.dispatch_reading(
-                            clean_id, "Consumption", data["consumption"], dev_name, model, radio_name=radio_name, radio_freq=freq_display
+                            clean_id,
+                            "Consumption",
+                            data["consumption"],
+                            dev_name,
+                            model,
+                            radio_name=radio_name,
+                            radio_freq=freq_display,
                         )
                         del data["consumption"]
 
@@ -947,7 +1044,13 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                         dp_f = calculate_dew_point(t_c, data["humidity"])
                         if dp_f is not None:
                             data_processor.dispatch_reading(
-                                clean_id, "dew_point", dp_f, dev_name, model, radio_name=radio_name, radio_freq=freq_display
+                                clean_id,
+                                "dew_point",
+                                dp_f,
+                                dev_name,
+                                model,
+                                radio_name=radio_name,
+                                radio_freq=freq_display,
                             )
 
                     # Flatten + dispatch
@@ -964,7 +1067,7 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                         )
 
                     # Inject Last Seen timestamp (ISO 8601 UTC) for Home Assistant
-                    data["last_seen"] = time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime())
+                    data["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime())
 
                     flat = flatten(data)
                     for key, value in flat.items():
@@ -974,15 +1077,35 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                         if key in ["temperature_C", "temp_C"] and isinstance(value, (int, float)):
                             val_f = round(value * 1.8 + 32.0, 1)
                             data_processor.dispatch_reading(
-                                clean_id, "temperature", val_f, dev_name, model, radio_name=radio_name, radio_freq=freq_display
+                                clean_id,
+                                "temperature",
+                                val_f,
+                                dev_name,
+                                model,
+                                radio_name=radio_name,
+                                radio_freq=freq_display,
                             )
-                        elif key in ["temperature_F", "temp_F", "temperature"] and isinstance(value, (int, float)):
+                        elif key in ["temperature_F", "temp_F", "temperature"] and isinstance(
+                            value, (int, float)
+                        ):
                             data_processor.dispatch_reading(
-                                clean_id, "temperature", value, dev_name, model, radio_name=radio_name, radio_freq=freq_display
+                                clean_id,
+                                "temperature",
+                                value,
+                                dev_name,
+                                model,
+                                radio_name=radio_name,
+                                radio_freq=freq_display,
                             )
                         else:
                             data_processor.dispatch_reading(
-                                clean_id, key, value, dev_name, model, radio_name=radio_name, radio_freq=freq_display
+                                clean_id,
+                                key,
+                                value,
+                                dev_name,
+                                model,
+                                radio_name=radio_name,
+                                radio_freq=freq_display,
                             )
 
                 except json.JSONDecodeError:
@@ -995,7 +1118,11 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
 
                     # --- Friendly HA status mappings (check BEFORE noise filters) ---
                     status = None
-                    if "no supported devices" in low or "no matching device" in low or "found 0 device" in low:
+                    if (
+                        "no supported devices" in low
+                        or "no matching device" in low
+                        or "found 0 device" in low
+                    ):
                         status = "Error: No RTL-SDR device found"
                     elif "usb_claim_interface" in low or "device or resource busy" in low:
                         status = "Error: USB busy / claimed"
@@ -1016,6 +1143,9 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                             status,
                             friendly_name=status_friendly,
                         )
+                        # Record health: error detected
+                        health = get_health_monitor()
+                        health.record_error(radio_name, status.replace("Error: ", ""))
                         continue
 
                     # Ignore startup chatter that isn't actionable
@@ -1025,7 +1155,14 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                     print(f"[RTL] Error processing line: {e}")
 
         except Exception as e:
-            _publish_radio_status(mqtt_handler, sys_id, sys_model, status_field, f"Error: {e}", friendly_name=status_friendly)
+            _publish_radio_status(
+                mqtt_handler,
+                sys_id,
+                sys_model,
+                status_field,
+                f"Error: {e}",
+                friendly_name=status_friendly,
+            )
             print(f"[RTL] Subprocess crashed or failed to start: {e}")
 
         # Cleanup before restart
@@ -1045,13 +1182,26 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
             if rc is not None and rc != 0:
                 if last_error_line:
                     _publish_radio_status(
-                        mqtt_handler, sys_id, sys_model, status_field, f"Error: {last_error_line}", friendly_name=status_friendly
+                        mqtt_handler,
+                        sys_id,
+                        sys_model,
+                        status_field,
+                        f"Error: {last_error_line}",
+                        friendly_name=status_friendly,
                     )
                 else:
                     _publish_radio_status(
-                        mqtt_handler, sys_id, sys_model, status_field, f"Error: rtl_433 exited ({rc})", friendly_name=status_friendly
+                        mqtt_handler,
+                        sys_id,
+                        sys_model,
+                        status_field,
+                        f"Error: rtl_433 exited ({rc})",
+                        friendly_name=status_friendly,
                     )
 
         last_online_mark = 0.0
+        # Record health: restart
+        health = get_health_monitor()
+        health.record_restart(radio_name)
         print(f"[RTL] {radio_name} crashed/stopped. Restarting in 5s...")
         time.sleep(5)

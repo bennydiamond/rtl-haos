@@ -43,7 +43,6 @@ def test_rejects_plain_int_rate_that_is_likely_missing_k() -> None:
     assert "too small" in err or "did you mean" in err or "ambiguous" in err
 
 
-
 def test_style_b_outfile_seconds_works() -> None:
     proc = run_script("tests/fixtures/rtl433/x.cu8", "10", "433.92M", "250k")
     assert proc.returncode == 0, proc.stderr

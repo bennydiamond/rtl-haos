@@ -14,13 +14,11 @@ def test_config_loads_options_json_and_sets_basics(monkeypatch):
         "bridge_name": "My Bridge",
         "mqtt_host": "192.0.2.10",
         "mqtt_port": 1884,
-
         # include common variants so whichever your config expects is present
         "mqtt_user": "u",
         "mqtt_username": "u",
         "mqtt_pass": "p",
         "mqtt_password": "p",
-
         "force_new_ids": True,
         "verbose_transmissions": True,
     }
@@ -42,6 +40,7 @@ def test_config_loads_options_json_and_sets_basics(monkeypatch):
     monkeypatch.setattr(builtins, "open", fake_open)
 
     import pathlib
+
     cfg_path = pathlib.Path(__file__).resolve().parents[1] / "config.py"
     ns = runpy.run_path(str(cfg_path))
 
@@ -70,6 +69,7 @@ def test_config_options_json_parse_error_does_not_crash(monkeypatch):
     monkeypatch.setattr(builtins, "open", fake_open)
 
     import pathlib
+
     cfg_path = pathlib.Path(__file__).resolve().parents[1] / "config.py"
     ns = runpy.run_path(str(cfg_path))
 

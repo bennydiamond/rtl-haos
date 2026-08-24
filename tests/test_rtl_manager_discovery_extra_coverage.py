@@ -16,6 +16,7 @@ def test_discover_rtl_devices_missing_rtl_eeprom_does_not_crash(mocker, capsys):
     assert devices == []
     assert "rtl_eeprom not found" in out
 
+
 def test_discover_rtl_devices_uses_replace_errors_to_avoid_unicode_decode(mocker):
     """Regression guard: ensure we pass errors='replace' to subprocess.run.
 
@@ -26,7 +27,9 @@ def test_discover_rtl_devices_uses_replace_errors_to_avoid_unicode_decode(mocker
     mock_run = mocker.patch("rtl_manager.subprocess.run")
 
     # Make discovery stop immediately.
-    mock_run.return_value = mocker.Mock(stdout="No supported devices found.", stderr="", returncode=1)
+    mock_run.return_value = mocker.Mock(
+        stdout="No supported devices found.", stderr="", returncode=1
+    )
 
     rtl_manager.discover_rtl_devices()
 

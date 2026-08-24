@@ -83,7 +83,9 @@ def _planned_publish_fields(*, data_raw: dict, model: str) -> list[tuple[str, ob
         derived = []
 
     # SCM/ERT: consumption -> Consumption; consumption removed.
-    if (("SCM" in (model or "")) or ("ERT" in (model or ""))) and data_processed.get("consumption") is not None:
+    if (("SCM" in (model or "")) or ("ERT" in (model or ""))) and data_processed.get(
+        "consumption"
+    ) is not None:
         derived.append(("Consumption", data_processed.get("consumption")))
         data_processed.pop("consumption", None)
 

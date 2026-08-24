@@ -1,7 +1,12 @@
 import config
 import mqtt_handler
 
-from ._mqtt_test_helpers import DummyClient, assert_float_str, last_discovery_payload, last_state_payload
+from ._mqtt_test_helpers import (
+    DummyClient,
+    assert_float_str,
+    last_discovery_payload,
+    last_state_payload,
+)
 
 
 def _patch_common(monkeypatch):
@@ -34,7 +39,9 @@ def test_consumption_data_updates_to_kwh_after_ert_type(monkeypatch):
     # 1) consumption_data arrives first (before ert_type commodity hint)
     h.send_sensor("device_x", "consumption_data", 217504, "ERT-SCM deadbeef", "ERT-SCM")
 
-    cfg1 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_ERT-SCM_deadbeef_consumption_data_T")
+    cfg1 = last_discovery_payload(
+        c, domain="sensor", unique_id_with_suffix="rtl433_ERT-SCM_deadbeef_consumption_data_T"
+    )
     assert cfg1.get("device_class") == "gas"
     assert cfg1.get("unit_of_measurement") == "ft³"
 
@@ -47,7 +54,9 @@ def test_consumption_data_updates_to_kwh_after_ert_type(monkeypatch):
     # 2) ert_type arrives later indicating electric (4 is in the electric set)
     h.send_sensor("device_x", "ert_type", 4, "ERT-SCM deadbeef", "ERT-SCM")
 
-    cfg2 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_ERT-SCM_deadbeef_consumption_data_T")
+    cfg2 = last_discovery_payload(
+        c, domain="sensor", unique_id_with_suffix="rtl433_ERT-SCM_deadbeef_consumption_data_T"
+    )
     assert cfg2.get("device_class") == "energy"
     assert cfg2.get("unit_of_measurement") == "kWh"
 
@@ -72,13 +81,17 @@ def test_meter_type_does_not_require_gas_volume_unit(monkeypatch):
 
     # Consumption first
     h.send_sensor("device_x", "Consumption", 12345, "SCMplus deadbeef", "SCMplus")
-    cfg1 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T")
+    cfg1 = last_discovery_payload(
+        c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T"
+    )
     assert cfg1.get("device_class") == "gas"
     assert cfg1.get("unit_of_measurement") == "ft³"
 
     # MeterType later (no conversion expected; just ensure no crash and still ft³)
     h.send_sensor("device_x", "MeterType", "Gas", "SCMplus deadbeef", "SCMplus")
-    cfg2 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T")
+    cfg2 = last_discovery_payload(
+        c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T"
+    )
     assert cfg2.get("device_class") == "gas"
     assert cfg2.get("unit_of_measurement") == "ft³"
 
@@ -102,7 +115,9 @@ def test_gas_unit_ccf_converts_and_refreshes_after_meter_type(monkeypatch):
 
     # 1) Total arrives first (commodity unknown) -> default gas ft³ metadata.
     h.send_sensor("device_x", "Consumption", 12345, "SCMplus deadbeef", "SCMplus")
-    cfg1 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T")
+    cfg1 = last_discovery_payload(
+        c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T"
+    )
     assert cfg1.get("device_class") == "gas"
     assert cfg1.get("unit_of_measurement") == "ft³"
     st1 = last_state_payload(c, "rtl433_SCMplus_deadbeef", "Consumption")
@@ -115,7 +130,9 @@ def test_gas_unit_ccf_converts_and_refreshes_after_meter_type(monkeypatch):
     #    discovery to CCF and re-publish the cached total scaled by ÷100.
     h.send_sensor("device_x", "MeterType", "Gas", "SCMplus deadbeef", "SCMplus")
 
-    cfg2 = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T")
+    cfg2 = last_discovery_payload(
+        c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T"
+    )
     assert cfg2.get("device_class") == "gas"
     assert cfg2.get("unit_of_measurement") == "CCF"
 

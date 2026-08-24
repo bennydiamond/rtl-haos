@@ -7,6 +7,7 @@ DESCRIPTION:
   - start_throttle_loop(): Runs in a background thread to flush averages.
   - UPDATED: Now uses KnownDeviceManager for all known-device orchestration.
 """
+
 import threading
 import time
 import statistics
@@ -18,6 +19,7 @@ import config
 NON_AVERAGED_NUMERIC_FIELDS = {
     "battery_ok",
 }
+
 
 class DataProcessor:
     def __init__(self, mqtt_handler, known_device_manager=None):
@@ -34,18 +36,22 @@ class DataProcessor:
         has_declared_sync = hasattr(type(self.mqtt_handler), "send_sensor_sync") or (
             "send_sensor_sync" in getattr(self.mqtt_handler, "__dict__", {})
         )
-        send_sync = getattr(self.mqtt_handler, "send_sensor_sync", None) if has_declared_sync else None
+        send_sync = (
+            getattr(self.mqtt_handler, "send_sensor_sync", None) if has_declared_sync else None
+        )
         if callable(send_sync):
             return send_sync(clean_id, field, value, dev_name, model, is_rtl=is_rtl)
         return self.mqtt_handler.send_sensor(clean_id, field, value, dev_name, model, is_rtl=is_rtl)
 
     # --- FIX 1: Add radio_freq to arguments ---
-    def dispatch_reading(self, clean_id, field, value, dev_name, model, radio_name="Unknown", radio_freq="Unknown"):
+    def dispatch_reading(
+        self, clean_id, field, value, dev_name, model, radio_name="Unknown", radio_freq="Unknown"
+    ):
         """
         Ingests a sensor reading.
         If throttling is disabled (interval <= 0), sends immediately.
         Otherwise, stores it in the buffer.
-        
+
         Discovery gating is handled by known_device_manager.should_process_frame().
         """
         interval = getattr(config, "RTL_THROTTLE_INTERVAL", 0)
@@ -53,17 +59,17 @@ class DataProcessor:
         # Skip null readings; they shouldn't influence averages or "last known" decisions.
         if value is None:
             return
-        
+
         compound_id = f"rtl433_{model}_{clean_id}"
-        
+
         if self.known_device_manager:
             if not self.known_device_manager.should_process_frame(compound_id):
                 return
-        
+
         # 1. Immediate Dispatch (No Throttling)
         if interval <= 0:
             status = self._send_with_reply(clean_id, field, value, dev_name, model, is_rtl=True)
-            
+
             # Save to JSON whenever new topics are created, even if the device was already known.
             if self.known_device_manager and status.get("topics"):
                 known_compound_id = status.get("resolved_compound_id") or compound_id
@@ -78,22 +84,22 @@ class DataProcessor:
         with self.lock:
             if clean_id not in self.buffer:
                 self.buffer[clean_id] = {}
-            
+
             # Store metadata so we know who this device is when flushing
             if "__meta__" not in self.buffer[clean_id]:
                 self.buffer[clean_id]["__meta__"] = {
-                    "name": dev_name, 
-                    "model": model, 
+                    "name": dev_name,
+                    "model": model,
                     "radio": radio_name,
-                    "freq": radio_freq  # --- FIX 2: Store the frequency ---
+                    "freq": radio_freq,  # --- FIX 2: Store the frequency ---
                 }
             else:
                 self.buffer[clean_id]["__meta__"]["radio"] = radio_name
                 self.buffer[clean_id]["__meta__"]["freq"] = radio_freq
-            
+
             if field not in self.buffer[clean_id]:
                 self.buffer[clean_id][field] = []
-            
+
             self.buffer[clean_id][field].append(value)
 
     def start_throttle_loop(self):
@@ -106,10 +112,10 @@ class DataProcessor:
             return
 
         print(f"[THROTTLE] Averaging data every {interval} seconds.")
-        
+
         while True:
             time.sleep(interval)
-            
+
             # 1. Swap buffers safely
             with self.lock:
                 if not self.buffer:
@@ -119,7 +125,7 @@ class DataProcessor:
 
             count_sent = 0
             stats_by_radio = {}
-            
+
             # 2. Process batch
             for clean_id, device_data in current_batch.items():
                 meta = device_data.get("__meta__", {})
@@ -129,9 +135,9 @@ class DataProcessor:
                 r_freq = meta.get("freq", "")
 
                 for field, values in device_data.items():
-                    if field == "__meta__": 
+                    if field == "__meta__":
                         continue
-                    if not values: 
+                    if not values:
                         continue
 
                     # Calculate Average (or last known value for strings)
@@ -150,13 +156,15 @@ class DataProcessor:
                         final_val = values[-1]
 
                     compound_id = f"rtl433_{model}_{clean_id}"
-                    
+
                     if self.known_device_manager:
                         if not self.known_device_manager.should_process_frame(compound_id):
                             continue
-                    
-                    status = self._send_with_reply(clean_id, field, final_val, dev_name, model, is_rtl=True)
-                    
+
+                    status = self._send_with_reply(
+                        clean_id, field, final_val, dev_name, model, is_rtl=True
+                    )
+
                     if self.known_device_manager and status.get("topics"):
                         known_compound_id = status.get("resolved_compound_id") or compound_id
                         self.known_device_manager.add_or_update_device(
@@ -164,16 +172,16 @@ class DataProcessor:
                             device_name=dev_name,
                             new_topics=status["topics"],
                         )
-                    
+
                     count_sent += 1
-                    
+
                     # --- FIX 3: Group by Radio + Frequency for the log ---
                     key = f"{r_name}"
                     if r_freq and r_freq != "Unknown":
                         key = f"{r_name}[{r_freq}]"
-                        
+
                     stats_by_radio[key] = stats_by_radio.get(key, 0) + 1
-            
+
             # --- Consolidated Heartbeat Log ---
             if count_sent > 0:
                 # Format: (RTL_101[915M]: 5, RTL_001[433.92M]: 3)

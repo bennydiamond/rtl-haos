@@ -12,7 +12,6 @@ def test_config_options_blank_mqtt_host_defaults_to_core_mosquitto(monkeypatch):
     options = {
         "mqtt_host": "",  # intentionally blank in HA UI
         "mqtt_port": 1883,
-
         # list/dict types should be json.dumps'd into env vars
         "device_blacklist": ["Bad*", "Nope*"],
         "rtl_config": [

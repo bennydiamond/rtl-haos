@@ -1,4 +1,3 @@
-
 from mqtt_handler import (
     infer_commodity_from_ert_type,
     infer_commodity_from_meter_type,

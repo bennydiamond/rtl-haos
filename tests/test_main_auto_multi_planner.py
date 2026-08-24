@@ -48,6 +48,7 @@ class FakeThread:
     Replaces threading.Thread so main() doesn't actually spawn background threads.
     For rtl_loop/system_stats_loop we call target synchronously.
     """
+
     def __init__(self, target=None, args=(), kwargs=None, daemon=None):
         self.target = target
         self.args = args
@@ -100,11 +101,13 @@ def run_main(
 
     # Sleep: ignore startup sleeps, but exit loop quickly
     sleep_calls = {"n": 0}
+
     def fake_sleep(seconds):
         # Allow the startup sleeps to be skipped; exit the main loop on the first 1s sleep.
         if seconds == 1:
             raise KeyboardInterrupt()
         return None
+
     monkeypatch.setattr(main.time, "sleep", fake_sleep)
 
     # Replace threading
@@ -126,10 +129,12 @@ def run_main(
 
     def fake_choose_secondary_band_defaults(plan, country_code, secondary_override):
         return secondary_defaults
+
     monkeypatch.setattr(main, "choose_secondary_band_defaults", fake_choose_secondary_band_defaults)
 
     def fake_choose_hopper_band_defaults(country_code, used_freqs):
         return hopper_defaults
+
     monkeypatch.setattr(main, "choose_hopper_band_defaults", fake_choose_hopper_band_defaults)
 
     # Patch config values
@@ -149,9 +154,11 @@ def run_main(
 
     # capture rtl_loop calls
     started = []
+
     def fake_rtl_loop(radio, *_args, **_kwargs):
         started.append(copy.deepcopy(radio))
         return
+
     monkeypatch.setattr(main, "rtl_loop", fake_rtl_loop)
 
     # run
@@ -314,7 +321,12 @@ def test_manual_config_duplicate_ids_skips_second(monkeypatch):
 
 
 def test_auto_multi_detected_count_respects_hard_cap(monkeypatch):
-    detected = [_mk_device("101", 0), _mk_device("102", 1), _mk_device("103", 2), _mk_device("104", 3)]
+    detected = [
+        _mk_device("101", 0),
+        _mk_device("102", 1),
+        _mk_device("103", 2),
+        _mk_device("104", 3),
+    ]
     radios = run_main(
         monkeypatch,
         detected_devices=detected,

@@ -29,10 +29,7 @@ def test_save_devices_writes_devices_map(tmp_path):
     path = tmp_path / "known_devices.json"
     store = KnownDeviceStore(str(path))
 
-    store.save_devices({
-        "rtl433_ModelB_456": {},
-        "rtl433_ModelA_123": {}
-    })
+    store.save_devices({"rtl433_ModelB_456": {}, "rtl433_ModelA_123": {}})
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload == {
@@ -58,10 +55,7 @@ def test_save_devices_preserves_existing_metadata(tmp_path):
     )
     store = KnownDeviceStore(str(path))
 
-    store.save_devices({
-        "rtl433_ModelA_123": {"last_seen": 1712345678},
-        "rtl433_ModelC_789": {}
-    })
+    store.save_devices({"rtl433_ModelA_123": {"last_seen": 1712345678}, "rtl433_ModelC_789": {}})
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload == {

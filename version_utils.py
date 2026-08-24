@@ -82,7 +82,9 @@ def get_build_metadata() -> Optional[str]:
     return _sanitize_build(build)
 
 
-def format_display_version(base_version: str, build: Optional[str] = None, prefix: str = "v") -> str:
+def format_display_version(
+    base_version: str, build: Optional[str] = None, prefix: str = "v"
+) -> str:
     """Return display version for logs + device info: vVER.REV.PATCH(+BUILD)."""
     if not base_version or base_version == "Unknown":
         return "Unknown"

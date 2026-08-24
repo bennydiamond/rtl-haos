@@ -7,6 +7,7 @@ import unittest.mock as um
 import warnings
 import pytest
 import config
+
 # Some container/CI environments ship a vendored psutil (e.g. via ddtrace) that
 # emits noisy RuntimeWarnings on import due to missing /proc/vmstat.
 warnings.filterwarnings(
@@ -14,6 +15,7 @@ warnings.filterwarnings(
     message=r".*swap memory stats couldn't be determined.*",
     category=RuntimeWarning,
 )
+
 
 @pytest.fixture(autouse=True)
 def _isolate_device_filters(monkeypatch):
@@ -34,6 +36,7 @@ def _clear_build_metadata_env(monkeypatch):
     """
     monkeypatch.delenv("RTL_HAOS_BUILD", raising=False)
     monkeypatch.delenv("RTL_HAOS_TWEAK", raising=False)
+
 
 # Ensure we can import project modules from repo root
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -62,6 +65,7 @@ except ImportError:
 #
 try:
     import pytest_mock  # noqa: F401
+
     _HAS_PYTEST_MOCK = True
 except Exception:
     _HAS_PYTEST_MOCK = False

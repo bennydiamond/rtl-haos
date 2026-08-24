@@ -8,6 +8,7 @@ DESCRIPTION:
   - get_system_mac(): Generates a unique ID for the bridge itself based on hardware.
   - validate_radio_config(): Checks for common configuration mistakes (Missing M, Missing ID, etc).
 """
+
 import re
 import math
 import socket
@@ -18,49 +19,53 @@ import config
 # Global cache
 _SYSTEM_MAC = None
 
+
 def get_system_mac():
     global _SYSTEM_MAC
-    if _SYSTEM_MAC: 
+    if _SYSTEM_MAC:
         return _SYSTEM_MAC
 
     # 1. PREFERRED: Use Static ID from Config
     if config.BRIDGE_ID:
         _SYSTEM_MAC = config.BRIDGE_ID
         return _SYSTEM_MAC
-    
+
     try:
         # 2. FALLBACK: Use Hostname (Dynamic on HAOS!)
         host_id = socket.gethostname()
-        
+
         if not host_id:
             host_id = "rtl-bridge-default"
-            
+
         _SYSTEM_MAC = host_id
         return _SYSTEM_MAC
 
     except Exception:
         return "rtl-bridge-error-id"
 
+
 def clean_mac(mac):
     """Cleans up MAC/ID string for use in topic/unique IDs."""
     # Removes special characters to make it MQTT-safe
-    cleaned = re.sub(r'[^A-Za-z0-9]', '', str(mac))
+    cleaned = re.sub(r"[^A-Za-z0-9]", "", str(mac))
     return cleaned.lower() if cleaned else "unknown"
+
 
 def calculate_dew_point(temp_c, humidity):
     """Calculates Dew Point (F) using Magnus Formula."""
     if temp_c is None or humidity is None:
         return None
     if humidity <= 0:
-        return None 
+        return None
     try:
         b = 17.62
         c = 243.12
         gamma = (b * temp_c / (c + temp_c)) + math.log(humidity / 100.0)
         dp_c = (c * gamma) / (b - gamma)
-        return round(dp_c * 1.8 + 32, 1) # Return Fahrenheit
+        return round(dp_c * 1.8 + 32, 1)  # Return Fahrenheit
     except Exception:
         return None
+
 
 def validate_radio_config(radio_conf):
     """Analyze a radio configuration dictionary for common user errors.
@@ -137,8 +142,7 @@ def validate_radio_config(radio_conf):
             val = 0
         if val and val < 1_000_000:
             warnings.append(
-                f"Sample rate '{rate}' has no suffix (e.g. 'k'). "
-                f"Did you mean '{rate}k'?"
+                f"Sample rate '{rate}' has no suffix (e.g. 'k'). Did you mean '{rate}k'?"
             )
 
     # 4) Device selection / ID guidance
@@ -185,7 +189,6 @@ def validate_radio_config(radio_conf):
     return warnings
 
 
-
 def get_homeassistant_country_code() -> str | None:
     """Best-effort: infer Home Assistant country code (e.g. 'US', 'DE').
 
@@ -218,9 +221,38 @@ def get_homeassistant_country_code() -> str | None:
 
 _EU_868_COUNTRIES = {
     # EU + EEA + UK + CH (broadly 868 MHz ISM users)
-    "AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT",
-    "LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE",
-    "IS","LI","NO","CH","GB",
+    "AT",
+    "BE",
+    "BG",
+    "HR",
+    "CY",
+    "CZ",
+    "DK",
+    "EE",
+    "FI",
+    "FR",
+    "DE",
+    "GR",
+    "HU",
+    "IE",
+    "IT",
+    "LV",
+    "LT",
+    "LU",
+    "MT",
+    "NL",
+    "PL",
+    "PT",
+    "RO",
+    "SK",
+    "SI",
+    "ES",
+    "SE",
+    "IS",
+    "LI",
+    "NO",
+    "CH",
+    "GB",
 }
 
 
@@ -262,7 +294,18 @@ def choose_secondary_band_defaults(
     if p in ("eu", "europe", "uk"):
         return ("868M", 0)
 
-    if p in ("us", "usa", "na", "north_america", "north-america", "canada", "au", "australia", "nz", "new_zealand"):
+    if p in (
+        "us",
+        "usa",
+        "na",
+        "north_america",
+        "north-america",
+        "canada",
+        "au",
+        "australia",
+        "nz",
+        "new_zealand",
+    ):
         return ("915M", 0)
 
     if p in ("world", "global", "intl", "international"):

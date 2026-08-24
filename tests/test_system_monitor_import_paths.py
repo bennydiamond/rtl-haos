@@ -75,4 +75,7 @@ def test_format_list_for_ha_and_loop_one_iteration(monkeypatch):
     except StopIteration:
         pass
 
-    assert any(field == "sys_rtl_433_version" and value == "rtl_433 version test" for (_d, field, value, *_rest) in dm.calls)
+    assert any(
+        field == "sys_rtl_433_version" and value == "rtl_433 version test"
+        for (_d, field, value, *_rest) in dm.calls
+    )

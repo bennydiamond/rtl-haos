@@ -15,7 +15,7 @@ from known_device_aliases import KnownDeviceAliases
 
 class KnownDeviceManager:
     """Orchestrates known-device state and validation.
-    
+
     Intended to be accessed exclusively from the processor thread, with narrow
     callback-based interfaces for mqtt_handler interaction.
     """
@@ -56,7 +56,9 @@ class KnownDeviceManager:
             alias_bindings=alias_bindings,
         )
         if self.known_devices:
-            print(f"[STARTUP] Loaded {len(self.known_devices)} known device configurations from store.")
+            print(
+                f"[STARTUP] Loaded {len(self.known_devices)} known device configurations from store."
+            )
 
         # Protects known_device_ids mutations
         self._lock = threading.Lock()
@@ -174,10 +176,10 @@ class KnownDeviceManager:
     ) -> bool:
         """Bind alias to physical device and persist changes.
 
-                Default behavior removes stale physical-topic identities from known
-                devices and clears retained topics, including:
-                    - the previously bound device (on rebind), and
-                    - the target device's current physical identity topics.
+        Default behavior removes stale physical-topic identities from known
+        devices and clears retained topics, including:
+            - the previously bound device (on rebind), and
+            - the target device's current physical identity topics.
         """
         alias_name = str(alias_name or "").strip()
         device_compound_id = str(device_compound_id or "").strip()
@@ -186,7 +188,9 @@ class KnownDeviceManager:
 
         with self._lock:
             prev_alias_binding = self._alias_device_resolved.get(alias_name, {})
-            prev_device_for_alias = str(prev_alias_binding.get("physical_compound_id") or "").strip()
+            prev_device_for_alias = str(
+                prev_alias_binding.get("physical_compound_id") or ""
+            ).strip()
 
             # Find any OTHER alias already bound to the same physical device.
             # This covers rebind: user creates/renames an alias for a device that
@@ -351,7 +355,9 @@ class KnownDeviceManager:
                 print(f"[KnownDeviceManager] Error during mqtt cleanup: {e}")
         return True
 
-    def add_or_update_device(self, compound_id: str, device_name: str, new_topics: list[str]) -> None:
+    def add_or_update_device(
+        self, compound_id: str, device_name: str, new_topics: list[str]
+    ) -> None:
         """Add a new device or update an existing one with new topics.
 
         Called by processor after mqtt_handler publishes a new entity.
@@ -494,9 +500,7 @@ class KnownDeviceManager:
                 if not isinstance(binding, dict):
                     continue
                 phys = str(
-                    binding.get("device_compound_id")
-                    or binding.get("physical_compound_id")
-                    or ""
+                    binding.get("device_compound_id") or binding.get("physical_compound_id") or ""
                 ).strip()
                 if phys:
                     alias_bound_ids.add(phys)

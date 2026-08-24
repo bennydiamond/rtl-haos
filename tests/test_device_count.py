@@ -9,9 +9,11 @@ from device_count import DeviceCountChannel
 # push() — latest-value slot behaviour
 # ---------------------------------------------------------------------------
 
+
 def test_push_delivers_value():
     class DummyMQTT:
-        def send_sensor(self, *a, **k): pass
+        def send_sensor(self, *a, **k):
+            pass
 
     ch = DeviceCountChannel(DummyMQTT())
     ch.push(5)
@@ -22,8 +24,10 @@ def test_push_delivers_value():
 
 def test_push_overwrites_stale_value():
     """A second push() before the consumer reads must replace the first value."""
+
     class DummyMQTT:
-        def send_sensor(self, *a, **k): pass
+        def send_sensor(self, *a, **k):
+            pass
 
     ch = DeviceCountChannel(DummyMQTT())
     ch.push(3)
@@ -36,8 +40,10 @@ def test_push_overwrites_stale_value():
 
 def test_push_zero_after_nuke():
     """push(0) must be accepted even when no prior update exists (NUKE path)."""
+
     class DummyMQTT:
-        def send_sensor(self, *a, **k): pass
+        def send_sensor(self, *a, **k):
+            pass
 
     ch = DeviceCountChannel(DummyMQTT())
     ch.push(0)
@@ -48,6 +54,7 @@ def test_push_zero_after_nuke():
 # ---------------------------------------------------------------------------
 # loop() — consumer thread behaviour
 # ---------------------------------------------------------------------------
+
 
 def _make_channel_with_mock_mqtt(mocker):
     mqtt = mocker.Mock()
@@ -87,10 +94,7 @@ def test_loop_heartbeat_republishes_last_count(mocker):
     with pytest.raises(InterruptedError):
         ch.loop("devA", "Bridge")
 
-    calls = [
-        c for c in mqtt.send_sensor.call_args_list
-        if c.args[1] == "sys_device_count"
-    ]
+    calls = [c for c in mqtt.send_sensor.call_args_list if c.args[1] == "sys_device_count"]
     counts = [c.args[2] for c in calls]
     assert counts == [4, 4], f"Expected two publishes of 4, got {counts}"
 

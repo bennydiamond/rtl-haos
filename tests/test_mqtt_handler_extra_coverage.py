@@ -11,16 +11,24 @@ class DummyClient:
         self.unsubscribed = []
         self.connected = False
 
-    def username_pw_set(self, *_a, **_k): return
-    def will_set(self, *_a, **_k): return
+    def username_pw_set(self, *_a, **_k):
+        return
+
+    def will_set(self, *_a, **_k):
+        return
 
     def connect(self, *_a, **_k):
         self.connected = True
         return 0
 
-    def loop_start(self): return
-    def loop_stop(self): return
-    def disconnect(self): return
+    def loop_start(self):
+        return
+
+    def loop_stop(self):
+        return
+
+    def disconnect(self):
+        return
 
     def publish(self, topic, payload=None, qos=0, retain=False):
         self.published.append((topic, payload, qos, retain))
@@ -37,6 +45,7 @@ class DummyClient:
 
 def _make_handler(mocker):
     import mqtt_handler
+
     dummy = DummyClient()
     mocker.patch.object(mqtt_handler.mqtt, "Client", return_value=dummy)
     h = mqtt_handler.HomeNodeMQTT(version="vtest")
@@ -160,7 +169,9 @@ def test_on_message_nuke_deletes_discovery_entities(mocker):
             {"device": {"manufacturer": mfr, "identifiers": ["rtl_haos_bridge"]}}
         ).encode("utf-8")
 
-        msg = types.SimpleNamespace(topic="homeassistant/sensor/rtl_haos/some_entity/config", payload=payload)
+        msg = types.SimpleNamespace(
+            topic="homeassistant/sensor/rtl_haos/some_entity/config", payload=payload
+        )
         h._on_message(dummy, None, msg)
 
         if dummy.published:

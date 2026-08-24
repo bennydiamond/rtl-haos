@@ -1,7 +1,12 @@
 import config
 import mqtt_handler
 
-from ._mqtt_test_helpers import DummyClient, assert_float_str, last_discovery_payload, last_state_payload
+from ._mqtt_test_helpers import (
+    DummyClient,
+    assert_float_str,
+    last_discovery_payload,
+    last_state_payload,
+)
 
 
 def _patch_common(monkeypatch):
@@ -26,7 +31,9 @@ def test_gas_default_ft3_when_configured(monkeypatch):
     h.send_sensor("device_x", "MeterType", "Gas", "SCMplus deadbeef", "SCMplus")
     h.send_sensor("device_x", "Consumption", 12345, "SCMplus deadbeef", "SCMplus")
 
-    cfg = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T")
+    cfg = last_discovery_payload(
+        c, domain="sensor", unique_id_with_suffix="rtl433_SCMplus_deadbeef_Consumption_T"
+    )
     assert cfg.get("unit_of_measurement") == "ft³"
     assert cfg.get("device_class") == "gas"
 
@@ -46,7 +53,9 @@ def test_water_non_neptune_meter_reading_remains_ft3(monkeypatch):
     h.send_sensor("device_x", "type", "water", "SomeWater deadbeef", "SomeWater")
     h.send_sensor("device_x", "meter_reading", 55.5, "SomeWater deadbeef", "SomeWater")
 
-    cfg = last_discovery_payload(c, domain="sensor", unique_id_with_suffix="rtl433_SomeWater_deadbeef_meter_reading_T")
+    cfg = last_discovery_payload(
+        c, domain="sensor", unique_id_with_suffix="rtl433_SomeWater_deadbeef_meter_reading_T"
+    )
     assert cfg.get("device_class") == "water"
     assert cfg.get("unit_of_measurement") == "ft³"
 

@@ -6,6 +6,7 @@ DESCRIPTION:
   - UPDATED: Added explicit Warnings when NO hardware is detected on the USB bus.
   - UPDATED: Auto-renames duplicate USB serials to prevent hardware map collisions.
 """
+
 import os
 import sys
 import re
@@ -22,34 +23,43 @@ import importlib.util
 import subprocess
 
 # --- 1. GLOBAL LOGGING & COLOR SETUP ---
-c_cyan    = "\033[1;36m"   # Bold Cyan (Radio IDs / JSON Keys)
-c_magenta = "\033[1;35m"   # Bold Magenta (System Tags / DEBUG Header)
-c_blue    = "\033[1;34m"   # Bold Blue (JSON Numbers / Infrastructure)
-c_green   = "\033[1;32m"   # Bold Green (DATA Header / INFO)
-c_yellow  = "\033[1;33m"   # Bold Yellow (WARN Only)
-c_red     = "\033[1;31m"   # Bold Red (ERROR)
-c_white   = "\033[1;37m"   # Bold White (Values / Brackets / Colons)
-c_dim     = "\033[37m"     # Standard White (Timestamp)
-c_reset   = "\033[0m"
+c_cyan = "\033[1;36m"  # Bold Cyan (Radio IDs / JSON Keys)
+c_magenta = "\033[1;35m"  # Bold Magenta (System Tags / DEBUG Header)
+c_blue = "\033[1;34m"  # Bold Blue (JSON Numbers / Infrastructure)
+c_green = "\033[1;32m"  # Bold Green (DATA Header / INFO)
+c_yellow = "\033[1;33m"  # Bold Yellow (WARN Only)
+c_red = "\033[1;31m"  # Bold Red (ERROR)
+c_white = "\033[1;37m"  # Bold White (Values / Brackets / Colons)
+c_dim = "\033[37m"  # Standard White (Timestamp)
+c_reset = "\033[0m"
 
 _original_print = builtins.print
 
+
 def get_source_color(clean_text):
     clean = clean_text.lower()
-    if "unsupported" in clean: return c_yellow
-    if "supported" in clean: return c_green
-    if "mqtt" in clean: return c_magenta
-    if "rtl" in clean: return c_magenta
-    if "startup" in clean: return c_magenta
-    if "nuke" in clean: return c_red
+    if "unsupported" in clean:
+        return c_yellow
+    if "supported" in clean:
+        return c_green
+    if "mqtt" in clean:
+        return c_magenta
+    if "rtl" in clean:
+        return c_magenta
+    if "startup" in clean:
+        return c_magenta
+    if "nuke" in clean:
+        return c_red
     return c_cyan
 
+
 def highlight_json(text):
-    text = re.sub(r'("[^"]+")\s*:', f'{c_cyan}\\1{c_reset}{c_white}:{c_reset}', text)
-    text = re.sub(r':\s*("[^"]+")', f': {c_white}\\1{c_reset}', text)
-    text = re.sub(r':\s*(-?\d+\.?\d*)', f': {c_white}\\1{c_reset}', text)
-    text = re.sub(r':\s*(true|false|null)', f': {c_white}\\1{c_reset}', text)
+    text = re.sub(r'("[^"]+")\s*:', f"{c_cyan}\\1{c_reset}{c_white}:{c_reset}", text)
+    text = re.sub(r':\s*("[^"]+")', f": {c_white}\\1{c_reset}", text)
+    text = re.sub(r":\s*(-?\d+\.?\d*)", f": {c_white}\\1{c_reset}", text)
+    text = re.sub(r":\s*(true|false|null)", f": {c_white}\\1{c_reset}", text)
     return text
+
 
 def highlight_support_tags(text: str) -> str:
     # Normalize common variants (so old logs still color nicely)
@@ -69,15 +79,16 @@ def highlight_support_tags(text: str) -> str:
     )
     return text
 
+
 def timestamped_print(*args, **kwargs):
     now = datetime.now().strftime("%H:%M:%S")
     time_prefix = f"{c_dim}[{now}]{c_reset}"
     msg = " ".join(map(str, args))
     lower_msg = msg.lower()
-    
-    header = f"{c_green}INFO{c_reset}{c_white}:{c_reset}" 
+
+    header = f"{c_green}INFO{c_reset}{c_white}:{c_reset}"
     special_formatting_applied = False
-    
+
     if any(x in lower_msg for x in ["error", "critical", "failed", "crashed"]):
         header = f"{c_red}ERROR{c_reset}{c_white}:{c_reset}"
         msg = msg.replace("CRITICAL:", "").replace("ERROR:", "").strip()
@@ -87,7 +98,8 @@ def timestamped_print(*args, **kwargs):
     elif "debug" in lower_msg:
         header = f"{c_magenta}DEBUG{c_reset}{c_white}:{c_reset}"
         msg = msg.replace("[DEBUG]", "").replace("[debug]", "").strip()
-        if "{" in msg and "}" in msg: msg = highlight_json(msg)
+        if "{" in msg and "}" in msg:
+            msg = highlight_json(msg)
     elif "-> tx" in lower_msg:
         header = f"{c_green}DATA{c_reset}{c_white}:{c_reset}"
         msg = msg.replace("-> TX", "").strip()
@@ -105,12 +117,16 @@ def timestamped_print(*args, **kwargs):
             rest_of_msg = match.group(2)
             rest_of_msg = re.sub(r"^(RX:?|:)\s*", "", rest_of_msg).strip()
             s_color = get_source_color(src_text)
-            msg = f"{c_white}[{c_reset}{s_color}{src_text}{c_reset}{c_white}]:{c_reset} {rest_of_msg}"
+            msg = (
+                f"{c_white}[{c_reset}{s_color}{src_text}{c_reset}{c_white}]:{c_reset} {rest_of_msg}"
+            )
 
         msg = highlight_support_tags(msg)
     _original_print(f"{time_prefix} {header} {msg}", flush=True, **kwargs)
 
+
 builtins.print = timestamped_print
+
 
 def check_dependencies():
     if not subprocess.run(["which", "rtl_433"], capture_output=True).stdout:
@@ -142,7 +158,6 @@ def _start_named_thread(target, *, args=(), name=None, daemon=True):
     return thread
 
 
-
 import config
 from mqtt_handler import HomeNodeMQTT
 from utils import (
@@ -158,6 +173,7 @@ from known_device_store import KnownDeviceStore
 from known_device_manager import KnownDeviceManager
 from rtl_manager import rtl_loop, discover_rtl_devices
 
+
 def get_version():
     """Return display version for logs/device info.
 
@@ -169,6 +185,7 @@ def get_version():
         cfg_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config.yaml")
         # Prefer centralized helper (keeps one source of truth)
         from version_utils import get_display_version
+
         return get_display_version(cfg_path, prefix="v")
     except Exception:
         # Fallback: legacy line-scan behavior (no build metadata)
@@ -178,7 +195,7 @@ def get_version():
                 with open(cfg_path, "r", encoding="utf-8") as f:
                     for line in f:
                         if line.strip().startswith("version:"):
-                            ver = line.split(':', 1)[1].strip()
+                            ver = line.split(":", 1)[1].strip()
                             ver = ver.strip().strip('"').strip("'")
                             return f"v{ver}"
         except Exception:
@@ -192,11 +209,15 @@ def show_logo(version):
         r"  |  _ \|_   _|| |       | | | |  / \  / _ \/ ___| ",
         r"  | |_) | | |  | |  ___  | |_| | / _ \| | | \___ \ ",
         r"  |  _ <  | |  | | |___| |  _  |/ ___ \ |_| |___) |",
-        r"  |_| \_\ |_|  |_____|   |_| |_/_/   \_\___/|____/ "
+        r"  |_| \_\ |_|  |_____|   |_| |_/_/   \_\___/|____/ ",
     ]
-    for line in logo_lines: sys.stdout.write(f"{c_blue}{line}{c_reset}\n")
-    sys.stdout.write(f"\n{c_cyan}>>> RTL-SDR Bridge for Home Assistant ({c_reset}{c_yellow}{version}{c_reset}{c_cyan}) <<<{c_reset}\n\n\n")
+    for line in logo_lines:
+        sys.stdout.write(f"{c_blue}{line}{c_reset}\n")
+    sys.stdout.write(
+        f"\n{c_cyan}>>> RTL-SDR Bridge for Home Assistant ({c_reset}{c_yellow}{version}{c_reset}{c_cyan}) <<<{c_reset}\n\n\n"
+    )
     sys.stdout.flush()
+
 
 def main():
     check_dependencies()
@@ -266,12 +287,12 @@ def main():
         daemon=True,
     )
 
-    sys_id = get_system_mac().replace(":", "").lower() 
+    sys_id = get_system_mac().replace(":", "").lower()
     sys_model = config.BRIDGE_NAME
-    
+
     print("[STARTUP] Scanning USB bus for RTL-SDR devices...")
     detected_devices = discover_rtl_devices()
-    
+
     # If multiple dongles share the same USB serial (e.g., '00000001'), append index
     # (e.g., '00000001-1') so they don't overwrite each other in the hardware map.
     _seen_usb = {}
@@ -292,35 +313,38 @@ def main():
 
         _seen_usb[usb] = True
 
-
     for d in detected_devices:
         print(
             f"[STARTUP] SDR index {d.get('index')}: "
             f"USB Serial {d.get('usb_serial')} (ID {d.get('id')}) Name {d.get('name')}"
         )
 
-
     # --- Check for Physical Duplicates (Hardware) ---
     serial_counts = {}
     if detected_devices:
         for d in detected_devices:
-            sid = str(d.get('id', ''))
+            sid = str(d.get("id", ""))
             serial_counts[sid] = serial_counts.get(sid, 0) + 1
-            if 'id' in d and 'index' in d: pass 
+            if "id" in d and "index" in d:
+                pass
 
         for sid, count in serial_counts.items():
             if count > 1:
-                print(f"[STARTUP] WARNING: [Hardware] Multiple SDRs detected with same Serial '{sid}'. IDs must be unique for precise mapping. Use rtl_eeprom to fix.")
+                print(
+                    f"[STARTUP] WARNING: [Hardware] Multiple SDRs detected with same Serial '{sid}'. IDs must be unique for precise mapping. Use rtl_eeprom to fix."
+                )
 
     serial_to_index = {}
     if detected_devices:
         for d in detected_devices:
-            if 'id' in d and 'index' in d:
-                serial_to_index[str(d['id'])] = d['index']
+            if "id" in d and "index" in d:
+                serial_to_index[str(d["id"])] = d["index"]
         print(f"[STARTUP] Hardware Map: {serial_to_index}")
     else:
         # --- NEW WARNING: No Hardware Found ---
-        print("[STARTUP] WARNING: [Hardware] No RTL-SDR devices found on USB bus. Ensure device is plugged in and passed through to VM/Container.")
+        print(
+            "[STARTUP] WARNING: [Hardware] No RTL-SDR devices found on USB bus. Ensure device is plugged in and passed through to VM/Container."
+        )
         # --------------------------------------
 
     rtl_config = getattr(config, "RTL_CONFIG", None)
@@ -335,29 +359,36 @@ def main():
             radio.setdefault("slot", slot)  # fallback when 'id' is missing
 
             r_name = radio.get("name", "Unknown")
-            
+
             warns = validate_radio_config(radio)
             for w in warns:
                 print(f"[STARTUP] CONFIG WARNING: [Radio: {r_name}] {w}")
 
-            target_id = radio.get("id") 
-            if target_id: target_id = str(target_id).strip()
-            
+            target_id = radio.get("id")
+            if target_id:
+                target_id = str(target_id).strip()
+
             if target_id and target_id in seen_config_ids:
-                print(f"[STARTUP] CONFIG ERROR: [Radio: {r_name}] Duplicate ID '{target_id}' found in settings. Skipping this radio to prevent conflicts.")
-                continue 
-            
+                print(
+                    f"[STARTUP] CONFIG ERROR: [Radio: {r_name}] Duplicate ID '{target_id}' found in settings. Skipping this radio to prevent conflicts."
+                )
+                continue
+
             if target_id:
                 seen_config_ids.add(target_id)
-            
+
             if target_id and target_id in serial_to_index:
                 idx = serial_to_index[target_id]
-                radio['index'] = idx
+                radio["index"] = idx
                 configured_ids.add(target_id)
-                print(f"[STARTUP] Matched Config '{r_name}' (Serial {target_id}) to Physical Index {idx}")
+                print(
+                    f"[STARTUP] Matched Config '{r_name}' (Serial {target_id}) to Physical Index {idx}"
+                )
             else:
                 if target_id:
-                     print(f"[STARTUP] Warning: Configured Serial {target_id} not found in scan. Driver may fail.")
+                    print(
+                        f"[STARTUP] Warning: Configured Serial {target_id} not found in scan. Driver may fail."
+                    )
 
             _start_named_thread(
                 rtl_loop,
@@ -366,13 +397,15 @@ def main():
                 daemon=True,
             )
             time.sleep(5)
-            
+
         if detected_devices:
             for d in detected_devices:
                 d_id = str(d.get("id"))
                 if d_id not in configured_ids:
-                    print(f"[STARTUP] WARNING: [Radio: Serial {d_id}] Detected but NOT configured. It is currently idle.")
-            
+                    print(
+                        f"[STARTUP] WARNING: [Radio: Serial {d_id}] Detected but NOT configured. It is currently idle."
+                    )
+
     else:
         # --- B. SMART AUTO-CONFIGURATION MODE ---
         if detected_devices:
@@ -414,7 +447,6 @@ def main():
                         f"[STARTUP]: Auto Multi-Radio: rtl_auto_max_radios={max_radios_cfg} -> starting {max_radios} radio(s)."
                     )
 
-
                 country = get_homeassistant_country_code()
                 plan = getattr(config, "RTL_AUTO_BAND_PLAN", "auto")
                 sec_override = str(getattr(config, "RTL_AUTO_SECONDARY_FREQ", "") or "").strip()
@@ -427,9 +459,13 @@ def main():
                 # PRIMARY uses RTL_DEFAULT_FREQ; SECONDARY uses region-aware defaults.
                 print("[STARTUP] Unconfigured Mode: Auto Multi-Radio enabled.")
                 if country:
-                    print(f"[STARTUP] Auto Multi-Radio: HA country={country}, band_plan={plan} -> secondary={sec_freq}")
+                    print(
+                        f"[STARTUP] Auto Multi-Radio: HA country={country}, band_plan={plan} -> secondary={sec_freq}"
+                    )
                 else:
-                    print(f"[STARTUP] Auto Multi-Radio: HA country=unknown, band_plan={plan} -> secondary={sec_freq}")
+                    print(
+                        f"[STARTUP] Auto Multi-Radio: HA country=unknown, band_plan={plan} -> secondary={sec_freq}"
+                    )
 
                 radios = []
 
@@ -498,9 +534,17 @@ def main():
                         # use it as a regional "hopper" (when we know the region). This is intentionally
                         # opportunistic and may miss bursts while tuned elsewhere.
                         if not freq3:
-                            hopper_override = str(getattr(config, "RTL_AUTO_HOPPER_FREQS", "") or "").strip()
-                            hopper_hop = int(getattr(config, "RTL_AUTO_HOPPER_HOP_INTERVAL", 20) or 20)
-                            hopper_rate = getattr(config, "RTL_AUTO_HOPPER_RATE", getattr(config, "RTL_AUTO_SECONDARY_RATE", "1024k"))
+                            hopper_override = str(
+                                getattr(config, "RTL_AUTO_HOPPER_FREQS", "") or ""
+                            ).strip()
+                            hopper_hop = int(
+                                getattr(config, "RTL_AUTO_HOPPER_HOP_INTERVAL", 20) or 20
+                            )
+                            hopper_rate = getattr(
+                                config,
+                                "RTL_AUTO_HOPPER_RATE",
+                                getattr(config, "RTL_AUTO_SECONDARY_RATE", "1024k"),
+                            )
 
                             # Only auto-derive hopper freqs if we actually know the country.
                             if hopper_override:
@@ -513,8 +557,12 @@ def main():
                                     for s in str(radio1.get("freq", "")).split(",")
                                     if s.strip()
                                 }
-                                used.update({s.strip().lower() for s in str(freq2).split(",") if s.strip()})
-                                hopper_freq = choose_hopper_band_defaults(country_code=country, used_freqs=used)
+                                used.update(
+                                    {s.strip().lower() for s in str(freq2).split(",") if s.strip()}
+                                )
+                                hopper_freq = choose_hopper_band_defaults(
+                                    country_code=country, used_freqs=used
+                                )
                             else:
                                 hopper_freq = None
 
@@ -532,16 +580,22 @@ def main():
                                 hopper_rate = getattr(config, "RTL_AUTO_SECONDARY_RATE", "1024k")
 
                             # If only one frequency remains, disable hopping.
-                            hopper_list = [s.strip() for s in str(hopper_freq).split(",") if s.strip()]
+                            hopper_list = [
+                                s.strip() for s in str(hopper_freq).split(",") if s.strip()
+                            ]
 
                             # Avoid hopping onto a band we already cover with Radio #1/#2.
                             used_freqs = {
-                                s.strip().lower() for s in str(radio1.get("freq", "")).split(",") if s.strip()
+                                s.strip().lower()
+                                for s in str(radio1.get("freq", "")).split(",")
+                                if s.strip()
                             }
                             used_freqs.update(
                                 {s.strip().lower() for s in str(freq2).split(",") if s.strip()}
                             )
-                            filtered = [f for f in hopper_list if f.strip().lower() not in used_freqs]
+                            filtered = [
+                                f for f in hopper_list if f.strip().lower() not in used_freqs
+                            ]
                             hopper_list = filtered
 
                             # If nothing remains after filtering, we refuse to overlap.
@@ -600,7 +654,6 @@ def main():
                         f"(Rate: {r.get('rate')}, Hop: {r.get('hop_interval')})"
                     )
 
-
                     _start_named_thread(
                         rtl_loop,
                         args=(r, mqtt_handler, processor, sys_id, sys_model),
@@ -631,7 +684,7 @@ def main():
                     "slot": 0,
                     "hop_interval": def_hop,
                     "rate": config.RTL_DEFAULT_RATE,
-                    "freq": config.RTL_DEFAULT_FREQ
+                    "freq": config.RTL_DEFAULT_FREQ,
                 }
 
                 radio_setup.update(dev)
@@ -643,7 +696,9 @@ def main():
                 print(f"[STARTUP] Radio #1 ({dev['name']}) -> Defaulting to {radio_setup['freq']}")
 
                 if len(detected_devices) > 1:
-                    print(f"[STARTUP] WARNING: [System] {len(detected_devices)-1} additional SDR(s) detected but ignored. Enable Auto Multi-Radio or configure rtl_config to use them.")
+                    print(
+                        f"[STARTUP] WARNING: [System] {len(detected_devices) - 1} additional SDR(s) detected but ignored. Enable Auto Multi-Radio or configure rtl_config to use them."
+                    )
 
                 _start_named_thread(
                     rtl_loop,
@@ -651,27 +706,30 @@ def main():
                     name="rtl_loop",
                     daemon=True,
                 )
-           
+
         else:
             # --- UPDATED: Warning for Fallback Mode ---
-            print("[STARTUP] WARNING: [System] No hardware detected and no configuration provided. Attempting to start default device '0' (this will likely fail).")
-            
+            print(
+                "[STARTUP] WARNING: [System] No hardware detected and no configuration provided. Attempting to start default device '0' (this will likely fail)."
+            )
+
             # 1. SMART DEFAULT LOGIC
             def_freqs = config.RTL_DEFAULT_FREQ.split(",")
             def_hop = config.RTL_DEFAULT_HOP_INTERVAL
-            
+
             # If only 1 frequency is set, disable hopping to prevent the warning
-            if len(def_freqs) < 2: 
+            if len(def_freqs) < 2:
                 def_hop = 0
 
             auto_radio = {
                 "slot": 0,
-                "name": "RTL_auto", "id": "0",
-                "freq": config.RTL_DEFAULT_FREQ,             
-                "hop_interval": def_hop,   # <--- UPDATED: Use the calculated variable, not the config!
-                "rate": config.RTL_DEFAULT_RATE
+                "name": "RTL_auto",
+                "id": "0",
+                "freq": config.RTL_DEFAULT_FREQ,
+                "hop_interval": def_hop,  # <--- UPDATED: Use the calculated variable, not the config!
+                "rate": config.RTL_DEFAULT_RATE,
             }
-            
+
             warns = validate_radio_config(auto_radio)
             for w in warns:
                 print(f"[STARTUP] CONFIG WARNING: [Radio: RTL_auto] {w}")
@@ -696,10 +754,12 @@ def main():
     )
 
     try:
-        while True: time.sleep(1)
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
         print("\n[SHUTDOWN] Stopping MQTT...")
         mqtt_handler.stop()
+
 
 if __name__ == "__main__":
     main()

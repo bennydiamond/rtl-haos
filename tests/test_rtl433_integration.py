@@ -10,6 +10,7 @@ Enable integration tests:
 Enable hardware smoke tests (requires an RTL-SDR device):
   RUN_HARDWARE_TESTS=1 pytest -m hardware
 """
+
 from __future__ import annotations
 
 import json
@@ -51,7 +52,9 @@ def test_rtl433_binary_runs_help() -> None:
     )
 
     # Most builds exit 0 for -h; if not, show output for debugging.
-    assert proc.returncode == 0, f"rtl_433 -h failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert proc.returncode == 0, (
+        f"rtl_433 -h failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
     out = (proc.stdout + "\n" + proc.stderr).lower()
     assert "rtl_433" in out or "usage" in out
 
@@ -96,7 +99,9 @@ def test_rtl433_replay_fixture_emits_json() -> None:
     )
 
     # Some fixtures might produce warnings to stderr; don't require stderr to be empty.
-    assert proc.returncode == 0, f"rtl_433 replay failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert proc.returncode == 0, (
+        f"rtl_433 replay failed\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
 
     json_lines = []
     for line in proc.stdout.splitlines():

@@ -2,6 +2,7 @@ import os
 import pytest
 from config import Settings
 
+
 def test_config_env_override(monkeypatch):
     """Verifies that Environment Variables override defaults."""
     # Set fake env vars
