@@ -23,6 +23,14 @@ from utils import clean_mac, calculate_dew_point
 from sdr_health import get_health_monitor
 
 
+RTL_STARTUP_OUTPUT_TIMEOUT_S = 90
+RTL_RUNTIME_OUTPUT_TIMEOUT_S = 10 * 60
+RTL_CHILD_TERMINATION_GRACE_S = 2
+RTL_RESTART_BACKOFF_INITIAL_S = 5
+RTL_RESTART_BACKOFF_MAX_S = 30
+RTL_STABLE_PROCESS_S = 3 * 60
+
+
 # --- Process Tracking ---
 class ProcessRegistry:
     """Thread-safe registry for active rtl_433 subprocesses."""
@@ -894,9 +902,12 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
     last_online_mark = 0.0
     last_error_line = None
     ts_refresh_s = 30
+    restart_backoff_s = RTL_RESTART_BACKOFF_INITIAL_S
 
     while True:
         process = None
+        watchdog_stop = None
+        watchdog_state = None
         try:
             _publish_radio_status(
                 mqtt_handler,
@@ -918,6 +929,74 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                 bufsize=1,
             )
             ACTIVE_PROCESSES.append(process)
+            watchdog_stop = threading.Event()
+            watchdog_state = {
+                "started_at": time.monotonic(),
+                "last_output_at": time.monotonic(),
+                "last_json_at": None,
+                "trigger": None,
+            }
+
+            def watchdog() -> None:
+                while not watchdog_stop.wait(1):
+                    if process.poll() is not None:
+                        return
+                    now_mono = time.monotonic()
+                    started_at = watchdog_state["started_at"]
+                    last_output_at = watchdog_state["last_output_at"]
+                    if now_mono - started_at >= RTL_STARTUP_OUTPUT_TIMEOUT_S:
+                        if last_output_at <= started_at:
+                            watchdog_state["trigger"] = (
+                                f"no output during startup for {RTL_STARTUP_OUTPUT_TIMEOUT_S}s"
+                            )
+                            print(
+                                f"[RTL] {radio_name} watchdog: {watchdog_state['trigger']}; "
+                                f"terminating rtl_433 pid={process.pid}"
+                            )
+                            process.terminate()
+                            try:
+                                process.wait(timeout=RTL_CHILD_TERMINATION_GRACE_S)
+                            except subprocess.TimeoutExpired:
+                                print(
+                                    f"[RTL] {radio_name} watchdog: rtl_433 pid={process.pid} "
+                                    f"did not exit within {RTL_CHILD_TERMINATION_GRACE_S}s; killing"
+                                )
+                                process.kill()
+                            except Exception as e:
+                                print(
+                                    f"[RTL] {radio_name} watchdog: failed waiting for "
+                                    f"rtl_433 pid={process.pid}: {e}"
+                                )
+                            return
+                    elif now_mono - last_output_at >= RTL_RUNTIME_OUTPUT_TIMEOUT_S:
+                        watchdog_state["trigger"] = (
+                            f"no output for {RTL_RUNTIME_OUTPUT_TIMEOUT_S}s"
+                        )
+                        print(
+                            f"[RTL] {radio_name} watchdog: {watchdog_state['trigger']}; "
+                            f"terminating rtl_433 pid={process.pid}"
+                        )
+                        process.terminate()
+                        try:
+                            process.wait(timeout=RTL_CHILD_TERMINATION_GRACE_S)
+                        except subprocess.TimeoutExpired:
+                            print(
+                                f"[RTL] {radio_name} watchdog: rtl_433 pid={process.pid} "
+                                f"did not exit within {RTL_CHILD_TERMINATION_GRACE_S}s; killing"
+                            )
+                            process.kill()
+                        except Exception as e:
+                            print(
+                                f"[RTL] {radio_name} watchdog: failed waiting for "
+                                f"rtl_433 pid={process.pid}: {e}"
+                            )
+                        return
+
+            threading.Thread(
+                target=watchdog,
+                name=f"rtl_watchdog:{radio_name}",
+                daemon=True,
+            ).start()
 
             _publish_radio_status(
                 mqtt_handler,
@@ -952,6 +1031,7 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                 raw = line.strip()
                 if not raw:
                     continue
+                watchdog_state["last_output_at"] = time.monotonic()
 
                 try:
                     data = json.loads(raw)
@@ -967,6 +1047,7 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                     health = get_health_monitor()
                     health.record_data_received(radio_name)
                     health.clear_error(radio_name)
+                    watchdog_state["last_json_at"] = time.monotonic()
 
                     # Mark online once we see valid JSON
                     now = time.time()
@@ -1166,12 +1247,14 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
             print(f"[RTL] Subprocess crashed or failed to start: {e}")
 
         # Cleanup before restart
+        if watchdog_stop is not None:
+            watchdog_stop.set()
         if process:
             ACTIVE_PROCESSES.discard(process)
 
             try:
                 process.terminate()
-                process.wait(timeout=2)
+                process.wait(timeout=RTL_CHILD_TERMINATION_GRACE_S)
             except Exception:
                 try:
                     process.kill()
@@ -1199,9 +1282,32 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                         friendly_name=status_friendly,
                     )
 
+            trigger = watchdog_state.get("trigger") if watchdog_state else None
+            if trigger:
+                exit_reason = f"watchdog: {trigger}"
+            elif rc == 0:
+                exit_reason = "exited cleanly"
+            elif rc is not None and rc < 0:
+                exit_reason = f"terminated by signal {-rc}"
+            else:
+                exit_reason = f"exited with code {rc}"
+            process_pid = getattr(process, "pid", "unknown")
+            print(
+                f"[RTL] {radio_name} rtl_433 pid={process_pid} {exit_reason}; "
+                f"restarting in {restart_backoff_s}s"
+            )
+
         last_online_mark = 0.0
         # Record health: restart
         health = get_health_monitor()
         health.record_restart(radio_name)
-        print(f"[RTL] {radio_name} crashed/stopped. Restarting in 5s...")
-        time.sleep(5)
+        stable = (
+            watchdog_state
+            and watchdog_state.get("last_json_at") is not None
+            and time.monotonic() - watchdog_state["started_at"] >= RTL_STABLE_PROCESS_S
+        )
+        time.sleep(restart_backoff_s)
+        if stable:
+            restart_backoff_s = RTL_RESTART_BACKOFF_INITIAL_S
+        else:
+            restart_backoff_s = min(restart_backoff_s * 2, RTL_RESTART_BACKOFF_MAX_S)
