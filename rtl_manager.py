@@ -929,6 +929,10 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                 bufsize=1,
             )
             ACTIVE_PROCESSES.append(process)
+            print(
+                f"[RTL] {radio_name} started rtl_433 pid={getattr(process, 'pid', 'unknown')}: "
+                f"{_format_cmd(cmd)}"
+            )
             watchdog_stop = threading.Event()
             watchdog_state = {
                 "started_at": time.monotonic(),
@@ -968,9 +972,18 @@ def rtl_loop(radio_config: dict, mqtt_handler, data_processor, sys_id: str, sys_
                                     f"rtl_433 pid={process.pid}: {e}"
                                 )
                             return
-                    elif now_mono - last_output_at >= RTL_RUNTIME_OUTPUT_TIMEOUT_S:
+                    last_json_at = watchdog_state["last_json_at"]
+                    no_json_at_startup = (
+                        last_json_at is None
+                        and now_mono - started_at >= RTL_RUNTIME_OUTPUT_TIMEOUT_S
+                    )
+                    no_json_at_runtime = (
+                        last_json_at is not None
+                        and now_mono - last_json_at >= RTL_RUNTIME_OUTPUT_TIMEOUT_S
+                    )
+                    if no_json_at_startup or no_json_at_runtime:
                         watchdog_state["trigger"] = (
-                            f"no output for {RTL_RUNTIME_OUTPUT_TIMEOUT_S}s"
+                            f"no valid JSON output for {RTL_RUNTIME_OUTPUT_TIMEOUT_S}s"
                         )
                         print(
                             f"[RTL] {radio_name} watchdog: {watchdog_state['trigger']}; "
